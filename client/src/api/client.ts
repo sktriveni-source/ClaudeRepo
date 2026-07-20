@@ -1,85 +1,105 @@
-import type { Booking, City, Passenger, SearchResult, SeatMapResponse, Train } from "../types";
+import type {
+  AiQueryResult,
+  AuditEntry,
+  ChangeRequest,
+  DashboardStats,
+  DataQualityIssue,
+  DocumentSummary,
+  DuplicatePair,
+  EolWatchlistProduct,
+  Product,
+  ProductDocument,
+  User,
+} from "../types";
 
-const BASE = "/api";
+const TOKEN_KEY = "aiplm_token";
 
-class ApiRequestError extends Error {
-  code?: string;
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number, code?: string) {
+  constructor(status: number, message: string) {
     super(message);
     this.status = status;
-    this.code = code;
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  const body = await res.json().catch(() => ({}));
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> | undefined),
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`/api${path}`, { ...options, headers });
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiRequestError(body.error || "Request failed", res.status, body.code);
+    throw new ApiError(res.status, data.error || `Request failed (${res.status})`);
   }
-  return body as T;
+  return data as T;
 }
 
-export { ApiRequestError };
+export const api = {
+  login: (email: string) =>
+    request<{ token: string; user: User }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  me: () => request<User>("/auth/me"),
+  listUsers: () => request<User[]>("/auth/users"),
 
-export function getCities(): Promise<City[]> {
-  return request("/cities");
-}
+  listProducts: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return request<Product[]>(`/products${qs ? `?${qs}` : ""}`);
+  },
+  getProduct: (id: string) => request<Product>(`/products/${id}`),
+  createProduct: (data: Partial<Product>) =>
+    request<Product>("/products", { method: "POST", body: JSON.stringify(data) }),
+  updateProduct: (id: string, data: Partial<Product>) =>
+    request<Product>(`/products/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteProduct: (id: string) => request<void>(`/products/${id}`, { method: "DELETE" }),
+  productDocuments: (id: string) => request<ProductDocument[]>(`/products/${id}/documents`),
+  productChangeRequests: (id: string) => request<ChangeRequest[]>(`/products/${id}/change-requests`),
+  productAudit: (id: string) => request<AuditEntry[]>(`/products/${id}/audit`),
 
-export function searchTrains(from: string, to: string, date: string): Promise<SearchResult> {
-  const params = new URLSearchParams({ from, to, date });
-  return request(`/trains/search?${params.toString()}`);
-}
+  createDocument: (data: Partial<ProductDocument>) =>
+    request<ProductDocument>("/documents", { method: "POST", body: JSON.stringify(data) }),
+  deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: "DELETE" }),
+  summarizeDocument: (id: string) =>
+    request<DocumentSummary>(`/documents/${id}/summarize`, { method: "POST" }),
+  extractMetadata: (id: string) =>
+    request<{ metadata: Record<string, string> }>(`/documents/${id}/extract-metadata`, { method: "POST" }),
 
-export function getTrain(trainId: string): Promise<Train> {
-  return request(`/trains/${trainId}`);
-}
+  listChangeRequests: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return request<ChangeRequest[]>(`/change-requests${qs ? `?${qs}` : ""}`);
+  },
+  createChangeRequest: (data: Partial<ChangeRequest>) =>
+    request<ChangeRequest>("/change-requests", { method: "POST", body: JSON.stringify(data) }),
+  updateChangeRequest: (id: string, data: Partial<ChangeRequest>) =>
+    request<ChangeRequest>(`/change-requests/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 
-export function getSeatMap(trainId: string, classId: string, date: string): Promise<SeatMapResponse> {
-  const params = new URLSearchParams({ classId, date });
-  return request(`/trains/${trainId}/seats?${params.toString()}`);
-}
+  audit: (params: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return request<AuditEntry[]>(`/audit${qs ? `?${qs}` : ""}`);
+  },
 
-export interface BlockSeatsPayload {
-  trainId: string;
-  date: string;
-  classId: string;
-  seatNumbers: string[];
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-}
+  dashboardStats: () => request<DashboardStats>("/dashboard/stats"),
+  eolWatchlist: () => request<EolWatchlistProduct[]>("/dashboard/eol-watchlist"),
 
-export function blockSeats(payload: BlockSeatsPayload): Promise<Booking> {
-  return request("/bookings/block", { method: "POST", body: JSON.stringify(payload) });
-}
+  aiQuery: (question: string) =>
+    request<AiQueryResult>("/ai/query", { method: "POST", body: JSON.stringify({ question }) }),
+  aiDuplicates: () => request<DuplicatePair[]>("/ai/duplicates"),
+  aiDataQuality: () => request<DataQualityIssue[]>("/ai/data-quality"),
+};
 
-export function getBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}`);
-}
-
-export interface PaymentPayload {
-  method: "CARD" | "UPI" | "NETBANKING";
-  cardNumber?: string;
-  cardName?: string;
-  expiry?: string;
-  cvv?: string;
-  upiId?: string;
-}
-
-export function payForBooking(bookingId: string, payload: PaymentPayload): Promise<Booking> {
-  return request(`/bookings/${bookingId}/payment`, { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function cancelBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}/cancel`, { method: "POST" });
-}
-
-export function listBookingsByEmail(email: string): Promise<Booking[]> {
-  const params = new URLSearchParams({ email });
-  return request(`/bookings?${params.toString()}`);
-}
+export { ApiError };
