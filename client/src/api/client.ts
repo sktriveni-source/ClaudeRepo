@@ -1,85 +1,91 @@
-import type { Booking, City, Passenger, SearchResult, SeatMapResponse, Train } from "../types";
+import type {
+  Account,
+  Activity,
+  AuditRecord,
+  Contact,
+  Customer360,
+  DashboardData,
+  Forecast,
+  Lead,
+  LeadScore,
+  NextBestAction,
+  Opportunity,
+  OpportunityRisk,
+  PipelineStage,
+  Product,
+  QueryResult,
+  SalesTarget,
+  SalesUser,
+} from "../types";
 
-const BASE = "/api";
-
-class ApiRequestError extends Error {
-  code?: string;
-  status: number;
-  constructor(message: string, status: number, code?: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
     headers: { "Content-Type": "application/json" },
-    ...init,
+    ...options,
   });
-  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiRequestError(body.error || "Request failed", res.status, body.code);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed: ${res.status}`);
   }
-  return body as T;
+  return res.json();
 }
 
-export { ApiRequestError };
+export const api = {
+  getDashboard: () => request<DashboardData>("/dashboard"),
 
-export function getCities(): Promise<City[]> {
-  return request("/cities");
-}
+  getAccounts: (params?: Record<string, string>) =>
+    request<Account[]>(`/accounts${qs(params)}`),
+  getAccount: (id: string) => request<Account>(`/accounts/${id}`),
+  getCustomer360: (id: string) => request<Customer360>(`/accounts/${id}/customer360`),
+  createAccount: (data: Partial<Account>) => request<Account>("/accounts", { method: "POST", body: JSON.stringify(data) }),
+  updateAccount: (id: string, data: Partial<Account>) => request<Account>(`/accounts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
 
-export function searchTrains(from: string, to: string, date: string): Promise<SearchResult> {
-  const params = new URLSearchParams({ from, to, date });
-  return request(`/trains/search?${params.toString()}`);
-}
+  getContacts: (params?: Record<string, string>) => request<Contact[]>(`/contacts${qs(params)}`),
+  createContact: (data: Partial<Contact>) => request<Contact>("/contacts", { method: "POST", body: JSON.stringify(data) }),
 
-export function getTrain(trainId: string): Promise<Train> {
-  return request(`/trains/${trainId}`);
-}
+  getLeads: (params?: Record<string, string>) => request<Lead[]>(`/leads${qs(params)}`),
+  getLead: (id: string) => request<Lead>(`/leads/${id}`),
+  createLead: (data: Partial<Lead>) => request<Lead>("/leads", { method: "POST", body: JSON.stringify(data) }),
+  updateLead: (id: string, data: Partial<Lead>) => request<Lead>(`/leads/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  qualifyLead: (id: string, qualified: boolean) =>
+    request<Lead>(`/leads/${id}/qualify`, { method: "POST", body: JSON.stringify({ qualified }) }),
+  convertLead: (id: string, data?: Record<string, unknown>) =>
+    request<{ lead: Lead; account: Account; contact: Contact; opportunity: Opportunity }>(`/leads/${id}/convert`, {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
 
-export function getSeatMap(trainId: string, classId: string, date: string): Promise<SeatMapResponse> {
-  const params = new URLSearchParams({ classId, date });
-  return request(`/trains/${trainId}/seats?${params.toString()}`);
-}
+  getOpportunities: (params?: Record<string, string>) => request<Opportunity[]>(`/opportunities${qs(params)}`),
+  getOpportunity: (id: string) => request<Opportunity>(`/opportunities/${id}`),
+  createOpportunity: (data: Partial<Opportunity>) =>
+    request<Opportunity>("/opportunities", { method: "POST", body: JSON.stringify(data) }),
+  updateOpportunity: (id: string, data: Partial<Opportunity>) =>
+    request<Opportunity>(`/opportunities/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  getPipeline: (params?: Record<string, string>) => request<PipelineStage[]>(`/opportunities/pipeline${qs(params)}`),
+  getForecast: (params?: Record<string, string>) => request<Forecast>(`/opportunities/forecast${qs(params)}`),
 
-export interface BlockSeatsPayload {
-  trainId: string;
-  date: string;
-  classId: string;
-  seatNumbers: string[];
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-}
+  getActivities: (params?: Record<string, string>) => request<Activity[]>(`/activities${qs(params)}`),
+  createActivity: (data: Partial<Activity>) => request<Activity>("/activities", { method: "POST", body: JSON.stringify(data) }),
 
-export function blockSeats(payload: BlockSeatsPayload): Promise<Booking> {
-  return request("/bookings/block", { method: "POST", body: JSON.stringify(payload) });
-}
+  getProducts: () => request<Product[]>("/products"),
+  getSalesUsers: () => request<SalesUser[]>("/sales-users"),
+  getSalesTargets: (params?: Record<string, string>) => request<SalesTarget[]>(`/sales-targets${qs(params)}`),
+  getAudit: () => request<AuditRecord[]>("/audit"),
 
-export function getBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}`);
-}
+  aiCustomerSummary: (accountId: string) =>
+    request<unknown>("/ai/customer-summary", { method: "POST", body: JSON.stringify({ accountId }) }),
+  aiLeadScore: (leadId: string) => request<LeadScore>("/ai/lead-score", { method: "POST", body: JSON.stringify({ leadId }) }),
+  aiOpportunityRisk: (opportunityId: string) =>
+    request<OpportunityRisk>("/ai/opportunity-risk", { method: "POST", body: JSON.stringify({ opportunityId }) }),
+  aiNextBestAction: (opportunityId: string) =>
+    request<NextBestAction>("/ai/next-best-action", { method: "POST", body: JSON.stringify({ opportunityId }) }),
+  aiQuery: (question: string, ownerId?: string) =>
+    request<QueryResult>("/ai/query", { method: "POST", body: JSON.stringify({ question, ownerId }) }),
+};
 
-export interface PaymentPayload {
-  method: "CARD" | "UPI" | "NETBANKING";
-  cardNumber?: string;
-  cardName?: string;
-  expiry?: string;
-  cvv?: string;
-  upiId?: string;
-}
-
-export function payForBooking(bookingId: string, payload: PaymentPayload): Promise<Booking> {
-  return request(`/bookings/${bookingId}/payment`, { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function cancelBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}/cancel`, { method: "POST" });
-}
-
-export function listBookingsByEmail(email: string): Promise<Booking[]> {
-  const params = new URLSearchParams({ email });
-  return request(`/bookings?${params.toString()}`);
+function qs(params?: Record<string, string>): string {
+  if (!params) return "";
+  const filtered = Object.entries(params).filter(([, v]) => v !== undefined && v !== "");
+  if (filtered.length === 0) return "";
+  return `?${new URLSearchParams(filtered).toString()}`;
 }

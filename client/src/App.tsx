@@ -1,30 +1,37 @@
-import { Route, Routes } from "react-router-dom";
-import Header from "./components/Header";
-import HomePage from "./pages/HomePage";
-import SearchResultsPage from "./pages/SearchResultsPage";
-import SeatSelectionPage from "./pages/SeatSelectionPage";
-import PaymentPage from "./pages/PaymentPage";
-import ConfirmationPage from "./pages/ConfirmationPage";
-import MyBookingsPage from "./pages/MyBookingsPage";
+import { Routes, Route } from "react-router-dom";
+import { Layout } from "./components/Layout";
+import { DashboardPage } from "./pages/DashboardPage";
+import { AccountsPage } from "./pages/AccountsPage";
+import { AccountDetailPage } from "./pages/AccountDetailPage";
+import { ContactsPage } from "./pages/ContactsPage";
+import { LeadsPage } from "./pages/LeadsPage";
+import { OpportunitiesPage } from "./pages/OpportunitiesPage";
+import { OpportunityDetailPage } from "./pages/OpportunityDetailPage";
+import { PipelinePage } from "./pages/PipelinePage";
+import { ForecastPage } from "./pages/ForecastPage";
+import { ActivitiesPage } from "./pages/ActivitiesPage";
+import { AIAssistantPage } from "./pages/AIAssistantPage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { AdministrationPage } from "./pages/AdministrationPage";
 
 export default function App() {
   return (
-    <div className="app-shell">
-      <Header />
-      <main className="main-content">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/search" element={<SearchResultsPage />} />
-          <Route path="/trains/:trainId/seats" element={<SeatSelectionPage />} />
-          <Route path="/booking/:bookingId/payment" element={<PaymentPage />} />
-          <Route path="/booking/:bookingId/confirmation" element={<ConfirmationPage />} />
-          <Route path="/my-bookings" element={<MyBookingsPage />} />
-          <Route path="*" element={<div className="state-message">Page not found.</div>} />
-        </Routes>
-      </main>
-      <footer className="site-footer no-print">
-        RailYatra demo app · Bangalore · Mumbai · Delhi · Chennai
-      </footer>
-    </div>
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="customers/accounts" element={<AccountsPage />} />
+        <Route path="customers/accounts/:id" element={<AccountDetailPage />} />
+        <Route path="customers/contacts" element={<ContactsPage />} />
+        <Route path="sales/leads" element={<LeadsPage />} />
+        <Route path="sales/opportunities" element={<OpportunitiesPage />} />
+        <Route path="sales/opportunities/:id" element={<OpportunityDetailPage />} />
+        <Route path="sales/pipeline" element={<PipelinePage />} />
+        <Route path="sales/forecast" element={<ForecastPage />} />
+        <Route path="activities" element={<ActivitiesPage />} />
+        <Route path="ai-assistant" element={<AIAssistantPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="administration" element={<AdministrationPage />} />
+      </Route>
+    </Routes>
   );
 }

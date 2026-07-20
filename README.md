@@ -1,25 +1,9 @@
-# RailYatra — Train Schedule & Booking App
+# AI-Powered Sales CRM & Customer Intelligence Platform
 
-A full-stack demo app for browsing train schedules and booking tickets between
-four cities: **Bangalore, Mumbai, Delhi and Chennai**.
-
-## Features
-
-- **Search schedules** between any two of the four cities for a given date (each
-  train only appears on the days it actually runs).
-- **Check seat availability and fares** across four travel classes (Sleeper, AC
-  3 Tier, AC 2 Tier, AC First Class).
-- **Interactive seat map** to pick specific seats, with a passenger detail form
-  per seat.
-- **Seat blocking**: selected seats are held for 5 minutes while the passenger
-  pays, with a live countdown timer. Held seats are released automatically if
-  payment isn't completed in time, or immediately if the booking is cancelled.
-- **Mock payment gateway** supporting Card / UPI / Net Banking, including a
-  simulated decline path (card numbers ending in `0000`).
-- **E-ticket confirmation** with a generated PNR, passenger list, and a
-  print/save option.
-- **My Bookings** lookup by email, showing the status of every past booking
-  (Confirmed / Awaiting Payment / Expired / Cancelled).
+A full-stack demo of an enterprise CRM for B2B sales teams, built around the
+lead → opportunity → customer lifecycle described in the business case, with
+an AI layer for lead scoring, risk detection, next-best-action, customer
+summaries and a natural-language sales assistant.
 
 ## Architecture
 
@@ -28,22 +12,60 @@ server/   Express REST API, in-memory data store (no external DB required)
 client/   React + TypeScript SPA (Vite), calls the API via /api/* (proxied in dev)
 ```
 
+The business case's target architecture is React + ASP.NET Core + SQL Server
++ Azure AI Foundry. This implementation keeps the same layering and REST
+contract (see `server/src/routes`) but swaps in a Node/Express API and an
+in-memory store so the whole platform runs anywhere Node is available, with
+no cloud or database dependency. Because the AI logic lives behind a single
+service layer (`server/src/services/aiService.js`), swapping in a real LLM
+(Azure AI Foundry, Claude, etc.) or moving the data layer to SQL Server/EF
+Core would not require changing the API surface or the frontend.
+
 ### Backend (`server/`)
 
-- `src/data` — static reference data: cities, travel classes, and the train
-  timetable (12 routes × 2 trains per direction, with distance-based fares).
-- `src/store/db.js` — in-memory seat inventory and booking state machine:
-  `BLOCKED → CONFIRMED`, or `BLOCKED → EXPIRED` / `CANCELLED`. Expired holds
-  are swept every 30s and also reaped lazily on access.
-- `src/routes` — `GET /api/cities`, `GET /api/trains/search`,
-  `GET /api/trains/:id/seats`, `POST /api/bookings/block`,
-  `POST /api/bookings/:id/payment`, `POST /api/bookings/:id/cancel`,
-  `GET /api/bookings?email=`.
+- `src/data/seed.js` — seed data for accounts, contacts, leads,
+  opportunities, activities, products, sales users/targets and audit
+  history, matching the entities in the business case's database design.
+- `src/store/db.js` — in-memory collections plus helpers (audit logging,
+  AI insight recording, date math).
+- `src/services/aiService.js` — rule-based "AI": lead scoring, opportunity
+  risk detection, next-best-action, timeline/customer summarization, and a
+  small NL-query engine for the sales assistant. Deterministic and fully
+  explainable, so the demo doesn't require an LLM API key — the calling
+  contract (`POST /api/ai/*`) is the same shape a real model integration
+  would use.
+- `src/services/pipelineService.js` — pipeline-by-stage and forecast
+  aggregation (weighted revenue, committed/best-case, target attainment).
+- `src/routes/*` — REST endpoints, mirroring business case §12:
+  `accounts` (+ `/customer360`, `/activities`), `contacts`, `leads`
+  (+ `/qualify`, `/convert`), `opportunities` (+ `/pipeline`, `/forecast`),
+  `activities`, `products`, `sales-users`, `sales-targets`, `audit`, and
+  `ai/*` (`customer-summary`, `lead-score`, `opportunity-risk`,
+  `next-best-action`, `timeline-summary`, `query`).
 
 ### Frontend (`client/`)
 
-React Router pages: Home (search) → Search Results → Seat Selection → Payment
-(with countdown) → Confirmation (e-ticket), plus a My Bookings lookup page.
+React Router SPA with the navigation from business case §13: Dashboard,
+Customers (Accounts, Contacts, Customer 360), Sales (Leads, Opportunities,
+Pipeline, Forecast), Activities, AI Sales Assistant, Reports, and
+Administration.
+
+Highlights:
+- **Customer 360** — account KPIs, AI health/insight, opportunities,
+  activity timeline, contacts and products purchased on one page.
+- **Leads** — AI lead score (0–100) with reasons, qualify/disqualify, and
+  one-click convert to Account + Contact + Opportunity.
+- **Opportunity detail** — AI risk assessment (stale activity, missing
+  decision maker, competitor involvement, stalled proposals) and next-best
+  -action recommendations, with a stage-update control. Weighted revenue is
+  computed as `estimatedValue × probability`.
+- **Pipeline** — funnel by stage, filterable by rep/region.
+- **Forecast** — target, total/weighted pipeline, committed, best-case,
+  closed-won, and an AI highlight on target attainment risk.
+- **AI Sales Assistant** — a chat UI that answers the natural-language
+  questions from the business case (opportunities closing this month,
+  customers with no recent contact, at-risk opportunities, "what should I
+  focus on today") with links back to the underlying records.
 
 ## Running locally
 
@@ -66,6 +88,9 @@ The Vite dev server proxies `/api/*` to `http://localhost:4000`, so just open
 
 - Data is in-memory and resets whenever the server restarts — there's no
   database dependency, so the app runs anywhere Node.js is available.
-- The payment gateway is a mock: any card/UPI ID is accepted except card
-  numbers ending in `0000`, which simulate a decline for testing the failure
-  path.
+- The "AI" is rule-based rather than an LLM call, so the demo is fully
+  deterministic and requires no API keys. Every AI response is generated by
+  a small, readable heuristic in `aiService.js` that mirrors the factors
+  described in the business case (engagement, target industry, company
+  size, source conversion history for lead scoring; activity recency,
+  decision-maker presence, competitor involvement for risk detection).
