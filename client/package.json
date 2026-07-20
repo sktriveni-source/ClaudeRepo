@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-client",
+  "name": "ai-crm-client",
   "version": "1.0.0",
-  "description": "Frontend for the train schedule, booking and payment app",
+  "description": "Frontend for the AI-Powered Sales CRM & Customer Intelligence Platform",
   "type": "module",
   "scripts": {
     "dev": "vite",
