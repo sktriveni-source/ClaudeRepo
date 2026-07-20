@@ -1,85 +1,86 @@
-import type { Booking, City, Passenger, SearchResult, SeatMapResponse, Train } from "../types";
+import type {
+  Approval,
+  DashboardSummary,
+  DataSource,
+  Domain,
+  DomainProfile,
+  DomainQualityScore,
+  DuplicateCluster,
+  FieldMappingSuggestion,
+  Issue,
+  MdmRecord,
+  NlQueryResult,
+  ValidationRule,
+} from "../types";
 
-const BASE = "/api";
-
-class ApiRequestError extends Error {
-  code?: string;
-  status: number;
-  constructor(message: string, status: number, code?: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
+function toQueryString(params?: Record<string, string | undefined>): string {
+  if (!params) return "";
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== "");
+  if (entries.length === 0) return "";
+  return `?${new URLSearchParams(entries as [string, string][]).toString()}`;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
     headers: { "Content-Type": "application/json" },
-    ...init,
+    ...options,
   });
-  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiRequestError(body.error || "Request failed", res.status, body.code);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed: ${res.status}`);
   }
-  return body as T;
+  if (res.status === 204) return undefined as T;
+  return res.json();
 }
 
-export { ApiRequestError };
+export const api = {
+  dashboard: () => request<DashboardSummary>("/dashboard/summary"),
 
-export function getCities(): Promise<City[]> {
-  return request("/cities");
-}
+  dataSources: () => request<DataSource[]>("/data-sources"),
+  addDataSource: (payload: Partial<DataSource>) =>
+    request<DataSource>("/data-sources", { method: "POST", body: JSON.stringify(payload) }),
+  syncDataSource: (id: string) => request<DataSource>(`/data-sources/${id}/sync`, { method: "POST" }),
 
-export function searchTrains(from: string, to: string, date: string): Promise<SearchResult> {
-  const params = new URLSearchParams({ from, to, date });
-  return request(`/trains/search?${params.toString()}`);
-}
+  records: (domain: Domain, params?: { q?: string; sourceId?: string }) =>
+    request<MdmRecord[]>(`/records/${domain}${toQueryString(params)}`),
 
-export function getTrain(trainId: string): Promise<Train> {
-  return request(`/trains/${trainId}`);
-}
+  profile: (domain: Domain) => request<DomainProfile>(`/profiling/${domain}`),
 
-export function getSeatMap(trainId: string, classId: string, date: string): Promise<SeatMapResponse> {
-  const params = new URLSearchParams({ classId, date });
-  return request(`/trains/${trainId}/seats?${params.toString()}`);
-}
+  rules: (domain?: Domain) => request<ValidationRule[]>(`/rules${domain ? `?domain=${domain}` : ""}`),
+  createRule: (rule: Partial<ValidationRule>) => request<ValidationRule>("/rules", { method: "POST", body: JSON.stringify(rule) }),
+  deleteRule: (id: string) => request<void>(`/rules/${id}`, { method: "DELETE" }),
+  ruleFromText: (text: string) => request<{ understood: boolean; rule?: Partial<ValidationRule>; message?: string }>("/rules/from-text", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  }),
 
-export interface BlockSeatsPayload {
-  trainId: string;
-  date: string;
-  classId: string;
-  seatNumbers: string[];
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-}
+  runValidation: (domain: Domain) => request<{ domain: Domain; issuesCreated: number }>(`/validation/run/${domain}`, { method: "POST" }),
 
-export function blockSeats(payload: BlockSeatsPayload): Promise<Booking> {
-  return request("/bookings/block", { method: "POST", body: JSON.stringify(payload) });
-}
+  duplicates: (domain: Domain) => request<DuplicateCluster[]>(`/duplicates/${domain}`),
+  runDuplicateScan: (domain: Domain) => request<DuplicateCluster[]>(`/duplicates/${domain}/run`, { method: "POST" }),
+  resolveCluster: (domain: Domain, clusterId: string, action: "merge" | "reject") =>
+    request<Approval>(`/duplicates/${domain}/${clusterId}/resolve`, { method: "POST", body: JSON.stringify({ action }) }),
 
-export function getBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}`);
-}
+  issues: (params?: { domain?: Domain; status?: string; severity?: string; category?: string }) =>
+    request<Issue[]>(`/issues${toQueryString(params)}`),
+  updateIssue: (id: string, patch: Partial<Issue>) => request<Issue>(`/issues/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  requestFix: (id: string) => request<Approval>(`/issues/${id}/request-fix`, { method: "POST" }),
+  issueSuggestion: (id: string) =>
+    request<{ action: string; suggestion: string; suggestedValue?: unknown; field?: string }>(`/issues/${id}/suggestion`),
 
-export interface PaymentPayload {
-  method: "CARD" | "UPI" | "NETBANKING";
-  cardNumber?: string;
-  cardName?: string;
-  expiry?: string;
-  cvv?: string;
-  upiId?: string;
-}
+  approvals: (status?: string) => request<Approval[]>(`/approvals${status ? `?status=${status}` : ""}`),
+  decideApproval: (id: string, decision: "approve" | "reject", comment?: string) =>
+    request<Approval>(`/approvals/${id}`, { method: "PATCH", body: JSON.stringify({ decision, comment }) }),
 
-export function payForBooking(bookingId: string, payload: PaymentPayload): Promise<Booking> {
-  return request(`/bookings/${bookingId}/payment`, { method: "POST", body: JSON.stringify(payload) });
-}
+  qualityScores: () => request<{ overall: number; domains: DomainQualityScore[] }>("/quality-scores"),
+  qualityScore: (domain: Domain) => request<DomainQualityScore>(`/quality-scores/${domain}`),
 
-export function cancelBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}/cancel`, { method: "POST" });
-}
-
-export function listBookingsByEmail(email: string): Promise<Booking[]> {
-  const params = new URLSearchParams({ email });
-  return request(`/bookings?${params.toString()}`);
-}
+  nlQuery: (query: string) => request<NlQueryResult>("/ai/nl-query", { method: "POST", body: JSON.stringify({ query }) }),
+  fieldMapping: (domain: Domain, rawFields: string[]) =>
+    request<{ domain: Domain; mapping: FieldMappingSuggestion[] }>(`/ai/field-mapping/${domain}`, {
+      method: "POST",
+      body: JSON.stringify({ rawFields }),
+    }),
+  classify: (domain: Domain) => request<{ domain: Domain; results: unknown[] }>(`/ai/classify/${domain}`, { method: "POST" }),
+  anomalies: (domain: Domain) => request<unknown[]>(`/ai/anomalies/${domain}`),
+};
