@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-client",
+  "name": "mdm-client",
   "version": "1.0.0",
-  "description": "Frontend for the train schedule, booking and payment app",
+  "description": "Frontend for the AI-Enterprise MDM data-quality platform",
   "type": "module",
   "scripts": {
     "dev": "vite",

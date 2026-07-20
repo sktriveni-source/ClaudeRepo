@@ -1,184 +1,192 @@
-import { trainById } from "../data/trains.js";
-import { classById } from "../data/classes.js";
-import { generatePNR } from "../utils/pnr.js";
+import { dataSources } from "../data/dataSources.js";
+import { suppliers } from "../data/suppliers.js";
+import { customers } from "../data/customers.js";
+import { products } from "../data/products.js";
+import { rules as seedRules, nextRuleId } from "../data/rules.js";
 
-export const BLOCK_TTL_MS = 5 * 60 * 1000; // seats held for 5 minutes while paying
+// A single in-memory store standing in for the platform's metadata + golden
+// record repository. No external DB required — mirrors the pattern used by
+// the other demo apps in this workspace so the app runs anywhere Node runs.
+const state = {
+  dataSources: dataSources.map((s) => ({ ...s })),
+  records: {
+    suppliers: suppliers.map((r) => ({ ...r })),
+    customers: customers.map((r) => ({ ...r })),
+    products: products.map((r) => ({ ...r })),
+  },
+  rules: seedRules.map((r) => ({ ...r })),
+  issues: [],
+  duplicateClusters: { suppliers: [], customers: [], products: [] },
+  approvals: [],
+  auditLog: [],
+  nextIssueId: 1,
+  nextApprovalId: 1,
+  nextClusterId: 1,
+};
 
-// seatKey -> { status: 'BLOCKED' | 'BOOKED', bookingId, blockExpiresAt }
-const seatStatus = new Map();
-// bookingId -> booking record
-const bookings = new Map();
+export const DOMAINS = ["suppliers", "customers", "products"];
 
-function seatKey(trainId, date, classId, seatNumber) {
-  return `${trainId}|${date}|${classId}|${seatNumber}`;
+export function getDataSources() {
+  return state.dataSources;
 }
 
-function seatNumbersForClass(classId) {
-  const cls = classById[classId];
-  if (!cls) throw new Error(`Unknown class ${classId}`);
-  return Array.from({ length: cls.totalSeats }, (_, i) => `${cls.coach}-${i + 1}`);
+export function getDataSource(id) {
+  return state.dataSources.find((s) => s.id === id);
 }
 
-/** Lazily releases a seat entry if its hold has expired. */
-function reapIfExpired(key) {
-  const entry = seatStatus.get(key);
-  if (entry && entry.status === "BLOCKED" && entry.blockExpiresAt < Date.now()) {
-    seatStatus.delete(key);
-    const booking = bookings.get(entry.bookingId);
-    if (booking && booking.status === "BLOCKED") {
-      booking.status = "EXPIRED";
-      booking.updatedAt = new Date().toISOString();
-    }
-    return true;
-  }
-  return false;
+export function addDataSource(source) {
+  const record = {
+    id: `src-${Date.now().toString(36)}`,
+    status: "connected",
+    lastSyncAt: new Date().toISOString(),
+    ...source,
+  };
+  state.dataSources.push(record);
+  logAudit("data_source.connected", { sourceId: record.id, name: record.name });
+  return record;
 }
 
-export function sweepExpiredHolds() {
-  for (const key of seatStatus.keys()) {
-    reapIfExpired(key);
-  }
+export function touchDataSourceSync(id) {
+  const src = getDataSource(id);
+  if (src) src.lastSyncAt = new Date().toISOString();
+  return src;
 }
 
-export function getSeatMap(trainId, date, classId) {
-  const train = trainById[trainId];
-  if (!train) throw new Error("Train not found");
-  const cls = train.classes.find((c) => c.id === classId);
-  if (!cls) throw new Error("Class not found on train");
-
-  return seatNumbersForClass(classId).map((seatNumber) => {
-    const key = seatKey(trainId, date, classId, seatNumber);
-    reapIfExpired(key);
-    const entry = seatStatus.get(key);
-    return {
-      seatNumber,
-      coach: cls.coach,
-      status: entry ? entry.status : "AVAILABLE",
-    };
-  });
+export function getRecords(domain) {
+  return state.records[domain] || [];
 }
 
-export function getAvailability(trainId, date, classId) {
-  const seats = getSeatMap(trainId, date, classId);
-  return seats.filter((s) => s.status === "AVAILABLE").length;
+export function getRecord(domain, id) {
+  return getRecords(domain).find((r) => r.id === id);
 }
 
-export class BookingError extends Error {
-  constructor(message, code = "BOOKING_ERROR") {
-    super(message);
-    this.code = code;
-  }
+export function updateRecord(domain, id, patch) {
+  const rec = getRecord(domain, id);
+  if (!rec) return null;
+  Object.assign(rec, patch);
+  return rec;
 }
 
-export function blockSeats({ trainId, date, classId, seatNumbers, passengers, contactEmail, contactPhone }) {
-  const train = trainById[trainId];
-  if (!train) throw new BookingError("Train not found", "NOT_FOUND");
-  const cls = train.classes.find((c) => c.id === classId);
-  if (!cls) throw new BookingError("Class not found on train", "NOT_FOUND");
-  if (!seatNumbers?.length) throw new BookingError("Select at least one seat", "INVALID_INPUT");
-  if (seatNumbers.length !== passengers?.length) {
-    throw new BookingError("Passenger details must match number of seats", "INVALID_INPUT");
-  }
+export function deleteRecord(domain, id) {
+  const list = state.records[domain];
+  const idx = list.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  list.splice(idx, 1);
+  return true;
+}
 
-  const keys = seatNumbers.map((s) => seatKey(trainId, date, classId, s));
+export function getRules(domain) {
+  return domain ? state.rules.filter((r) => r.domain === domain) : state.rules;
+}
 
-  // Validate all requested seats are currently free before mutating anything.
-  for (const key of keys) {
-    reapIfExpired(key);
-    if (seatStatus.has(key)) {
-      throw new BookingError("One or more selected seats are no longer available", "SEAT_TAKEN");
-    }
-  }
+export function addRule(rule) {
+  const record = { id: nextRuleId(), source: "manual", ...rule };
+  state.rules.push(record);
+  logAudit("rule.created", { ruleId: record.id, domain: record.domain, field: record.field });
+  return record;
+}
 
-  const now = Date.now();
-  const bookingId = `BK-${now}-${Math.random().toString(36).slice(2, 8)}`;
-  const blockExpiresAt = now + BLOCK_TTL_MS;
+export function deleteRule(id) {
+  const idx = state.rules.findIndex((r) => r.id === id);
+  if (idx === -1) return false;
+  state.rules.splice(idx, 1);
+  return true;
+}
 
-  keys.forEach((key) => {
-    seatStatus.set(key, { status: "BLOCKED", bookingId, blockExpiresAt });
-  });
+export function clearIssuesFromRun(domain, category) {
+  state.issues = state.issues.filter((i) => !(i.domain === domain && i.category === category));
+}
 
-  const fare = cls.fare * seatNumbers.length;
-  const booking = {
-    id: bookingId,
-    pnr: null,
-    trainId,
-    date,
-    classId,
-    seatNumbers,
-    passengers,
-    contactEmail,
-    contactPhone,
-    fare,
-    status: "BLOCKED",
-    blockExpiresAt,
+export function addIssue(issue) {
+  const record = {
+    id: `iss-${String(state.nextIssueId++).padStart(4, "0")}`,
+    status: "open",
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    payment: null,
+    ...issue,
   };
-  bookings.set(bookingId, booking);
-  return booking;
+  state.issues.push(record);
+  return record;
 }
 
-export function getBooking(bookingId) {
-  const booking = bookings.get(bookingId);
-  if (!booking) throw new BookingError("Booking not found", "NOT_FOUND");
-  if (booking.status === "BLOCKED") {
-    const key0 = seatKey(booking.trainId, booking.date, booking.classId, booking.seatNumbers[0]);
-    reapIfExpired(key0);
-  }
-  return booking;
-}
-
-export function listBookingsByEmail(email) {
-  return Array.from(bookings.values())
-    .filter((b) => b.contactEmail?.toLowerCase() === email.toLowerCase())
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
-
-export function payForBooking(bookingId, paymentDetails) {
-  const booking = getBooking(bookingId);
-  if (booking.status === "EXPIRED") {
-    throw new BookingError("Seat hold expired before payment was completed", "EXPIRED");
-  }
-  if (booking.status === "CANCELLED") {
-    throw new BookingError("Booking was cancelled", "CANCELLED");
-  }
-  if (booking.status !== "BLOCKED") {
-    throw new BookingError("Booking is not awaiting payment", "INVALID_STATE");
-  }
-
-  // Simple mock payment gateway: card numbers ending in 0000 simulate a decline.
-  const declined = paymentDetails?.method === "CARD" && /0000$/.test(paymentDetails?.cardNumber || "");
-  if (declined) {
-    throw new BookingError("Payment was declined by the bank. Please try another method.", "PAYMENT_DECLINED");
-  }
-
-  const keys = booking.seatNumbers.map((s) => seatKey(booking.trainId, booking.date, booking.classId, s));
-  keys.forEach((key) => {
-    seatStatus.set(key, { status: "BOOKED", bookingId: booking.id });
+export function getIssues(filters = {}) {
+  return state.issues.filter((i) => {
+    if (filters.domain && i.domain !== filters.domain) return false;
+    if (filters.status && i.status !== filters.status) return false;
+    if (filters.severity && i.severity !== filters.severity) return false;
+    if (filters.category && i.category !== filters.category) return false;
+    return true;
   });
+}
 
-  booking.status = "CONFIRMED";
-  booking.pnr = generatePNR();
-  booking.payment = {
-    method: paymentDetails?.method || "CARD",
-    reference: `PAY-${Date.now().toString(36).toUpperCase()}`,
-    paidAt: new Date().toISOString(),
-    amount: booking.fare,
+export function getIssue(id) {
+  return state.issues.find((i) => i.id === id);
+}
+
+export function updateIssue(id, patch) {
+  const issue = getIssue(id);
+  if (!issue) return null;
+  Object.assign(issue, patch);
+  return issue;
+}
+
+export function setDuplicateClusters(domain, clusters) {
+  state.duplicateClusters[domain] = clusters;
+}
+
+export function getDuplicateClusters(domain) {
+  return domain ? state.duplicateClusters[domain] || [] : state.duplicateClusters;
+}
+
+export function getDuplicateCluster(domain, clusterId) {
+  return (state.duplicateClusters[domain] || []).find((c) => c.id === clusterId);
+}
+
+export function nextClusterId() {
+  return `dup-${String(state.nextClusterId++).padStart(4, "0")}`;
+}
+
+export function addApproval(approval) {
+  const record = {
+    id: `apr-${String(state.nextApprovalId++).padStart(4, "0")}`,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+    ...approval,
   };
-  booking.updatedAt = new Date().toISOString();
-  return booking;
+  state.approvals.push(record);
+  return record;
 }
 
-export function cancelBooking(bookingId) {
-  const booking = getBooking(bookingId);
-  if (booking.status === "CANCELLED" || booking.status === "EXPIRED") {
-    return booking;
-  }
-  const keys = booking.seatNumbers.map((s) => seatKey(booking.trainId, booking.date, booking.classId, s));
-  keys.forEach((key) => seatStatus.delete(key));
-  booking.status = "CANCELLED";
-  booking.updatedAt = new Date().toISOString();
-  return booking;
+export function getApprovals(filters = {}) {
+  return state.approvals.filter((a) => {
+    if (filters.status && a.status !== filters.status) return false;
+    if (filters.type && a.type !== filters.type) return false;
+    return true;
+  });
 }
+
+export function getApproval(id) {
+  return state.approvals.find((a) => a.id === id);
+}
+
+export function updateApproval(id, patch) {
+  const approval = getApproval(id);
+  if (!approval) return null;
+  Object.assign(approval, patch);
+  return approval;
+}
+
+export function logAudit(action, details) {
+  state.auditLog.unshift({
+    id: `aud-${state.auditLog.length + 1}`,
+    action,
+    details,
+    at: new Date().toISOString(),
+  });
+  if (state.auditLog.length > 500) state.auditLog.length = 500;
+}
+
+export function getAuditLog(limit = 50) {
+  return state.auditLog.slice(0, limit);
+}
+
+export default state;

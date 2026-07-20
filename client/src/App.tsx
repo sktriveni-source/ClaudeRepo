@@ -1,30 +1,30 @@
 import { Route, Routes } from "react-router-dom";
-import Header from "./components/Header";
-import HomePage from "./pages/HomePage";
-import SearchResultsPage from "./pages/SearchResultsPage";
-import SeatSelectionPage from "./pages/SeatSelectionPage";
-import PaymentPage from "./pages/PaymentPage";
-import ConfirmationPage from "./pages/ConfirmationPage";
-import MyBookingsPage from "./pages/MyBookingsPage";
+import Sidebar from "./components/Sidebar";
+import DashboardPage from "./pages/DashboardPage";
+import DataSourcesPage from "./pages/DataSourcesPage";
+import ProfilingPage from "./pages/ProfilingPage";
+import RulesPage from "./pages/RulesPage";
+import DuplicatesPage from "./pages/DuplicatesPage";
+import IssuesPage from "./pages/IssuesPage";
+import ApprovalsPage from "./pages/ApprovalsPage";
+import AskAIPage from "./pages/AskAIPage";
 
 export default function App() {
   return (
     <div className="app-shell">
-      <Header />
-      <main className="main-content">
+      <Sidebar />
+      <main className="app-main">
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/search" element={<SearchResultsPage />} />
-          <Route path="/trains/:trainId/seats" element={<SeatSelectionPage />} />
-          <Route path="/booking/:bookingId/payment" element={<PaymentPage />} />
-          <Route path="/booking/:bookingId/confirmation" element={<ConfirmationPage />} />
-          <Route path="/my-bookings" element={<MyBookingsPage />} />
-          <Route path="*" element={<div className="state-message">Page not found.</div>} />
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/data-sources" element={<DataSourcesPage />} />
+          <Route path="/profiling" element={<ProfilingPage />} />
+          <Route path="/rules" element={<RulesPage />} />
+          <Route path="/duplicates" element={<DuplicatesPage />} />
+          <Route path="/issues" element={<IssuesPage />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
+          <Route path="/ask-ai" element={<AskAIPage />} />
         </Routes>
       </main>
-      <footer className="site-footer no-print">
-        RailYatra demo app · Bangalore · Mumbai · Delhi · Chennai
-      </footer>
     </div>
   );
 }
