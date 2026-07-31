@@ -1,20 +1,20 @@
 import express from "express";
 import cors from "cors";
-import { citiesRouter } from "./routes/cities.js";
-import { trainsRouter } from "./routes/trains.js";
-import { bookingsRouter } from "./routes/bookings.js";
-import { sweepExpiredHolds } from "./store/db.js";
+import { plmRouter } from "./routes/plm.js";
+import { mdmRouter } from "./routes/mdm.js";
+import { crmRouter } from "./routes/crm.js";
+import { aiEnabled } from "./ai/aiClient.js";
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4100;
 
 app.use(cors());
 app.use(express.json());
 
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
-app.use("/api/cities", citiesRouter);
-app.use("/api/trains", trainsRouter);
-app.use("/api/bookings", bookingsRouter);
+app.get("/api/health", (req, res) => res.json({ status: "ok", aiEnabled: aiEnabled() }));
+app.use("/api/plm", plmRouter);
+app.use("/api/mdm", mdmRouter);
+app.use("/api/crm", crmRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
@@ -26,9 +26,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-// Periodically release seat holds whose 5 minute payment window has lapsed.
-setInterval(sweepExpiredHolds, 30 * 1000);
-
 app.listen(PORT, () => {
-  console.log(`Train schedule API listening on http://localhost:${PORT}`);
+  console.log(`AI-Enterprise Platform API listening on http://localhost:${PORT}`);
+  console.log(`AI features: ${aiEnabled() ? "enabled (claude-opus-5)" : "disabled — using heuristic fallbacks (set ANTHROPIC_API_KEY to enable)"}`);
 });

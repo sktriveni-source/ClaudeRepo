@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-client",
+  "name": "ai-enterprise-platform-client",
   "version": "1.0.0",
-  "description": "Frontend for the train schedule, booking and payment app",
+  "description": "Frontend for the AI-Enterprise Platform (PLM, MDM, Sales CRM)",
   "type": "module",
   "scripts": {
     "dev": "vite",

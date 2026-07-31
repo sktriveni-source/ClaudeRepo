@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-server",
+  "name": "ai-enterprise-platform-server",
   "version": "1.0.0",
-  "description": "Backend API for the train schedule, booking and payment app",
+  "description": "Backend API for the AI-Enterprise Platform (PLM, MDM, Sales CRM)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "cors": "^2.8.5",
     "express": "^4.19.2"
   }
