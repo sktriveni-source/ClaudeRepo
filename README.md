@@ -1,3 +1,17 @@
+# Apps in this repo
+
+This repository contains two independent full-stack demo apps, each with its
+own `client/` and `server/`:
+
+- **[RailYatra](#railyatra--train-schedule--booking-app)** (`client/`,
+  `server/`) — train schedule search and ticket booking.
+- **[Pipeline360](sales-crm/README.md)** (`sales-crm/client/`,
+  `sales-crm/server/`) — a Salesforce-style sales lifecycle CRM covering
+  Leads, Accounts, Contacts and Opportunities from initial engagement through
+  closure.
+
+---
+
 # RailYatra — Train Schedule & Booking App
 
 A full-stack demo app for browsing train schedules and booking tickets between
