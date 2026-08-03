@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-server",
+  "name": "supply-flow-server",
   "version": "1.0.0",
-  "description": "Backend API for the train schedule, booking and payment app",
+  "description": "Backend API for the supply process flow app (raw material procurement -> manufacturing -> distribution)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {

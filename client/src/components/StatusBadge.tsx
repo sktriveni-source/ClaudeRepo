@@ -1,13 +1,19 @@
-import type { BookingStatus } from "../types";
-
-const CONFIG: Record<BookingStatus, { label: string; cls: string }> = {
-  CONFIRMED: { label: "Confirmed", cls: "badge-success" },
-  BLOCKED: { label: "Awaiting Payment", cls: "badge-warning" },
-  EXPIRED: { label: "Expired", cls: "badge-danger" },
-  CANCELLED: { label: "Cancelled", cls: "badge-muted" },
+const TONES: Record<string, string> = {
+  RAW_MATERIALS: "tone-blue",
+  MANUFACTURING: "tone-amber",
+  CLOSED: "tone-green",
+  SENT: "tone-gray",
+  QUOTED: "tone-blue",
+  ACCEPTED: "tone-green",
+  REJECTED: "tone-red",
+  PENDING: "tone-amber",
+  PAID: "tone-green",
+  ISSUED: "tone-amber",
+  PLACED: "tone-blue",
+  COMPLETE: "tone-green",
 };
 
-export default function StatusBadge({ status }: { status: BookingStatus }) {
-  const { label, cls } = CONFIG[status];
-  return <span className={`badge ${cls}`}>{label}</span>;
+export function StatusBadge({ label }: { label: string }) {
+  const tone = TONES[label] || "tone-gray";
+  return <span className={`badge ${tone}`}>{label.replace(/_/g, " ")}</span>;
 }
