@@ -1,5 +1,7 @@
 import { nextId } from "../utils/id.js";
+import { nextRevision } from "../utils/revision.js";
 import { seedProducts } from "../data/seed.js";
+import { STAGE_IDS } from "../data/stages.js";
 
 // Centralized in-memory data store. This is the single source of truth for
 // every client of the API: products, their customers/suppliers, lifecycle
@@ -35,10 +37,23 @@ function seed() {
       cost: p.cost,
       owner: p.owner,
       lifecycleStage: p.lifecycleStage,
+      revision: p.revision || "A",
       createdAt: now,
       updatedAt: now,
       customers: p.customers.map((c) => ({ id: nextId("CUS"), ...c })),
       suppliers: p.suppliers.map((s) => ({ id: nextId("SUP"), ...s })),
+      components: (p.components || []).map((c) => ({ id: nextId("CMP"), ...c })),
+      comments: [],
+      revisionHistory: [
+        {
+          id: nextId("REV"),
+          revision: p.revision || "A",
+          stage: p.lifecycleStage,
+          decidedBy: "System",
+          decidedAt: now,
+          comment: "Initial seed baseline.",
+        },
+      ],
     };
     products.set(id, product);
     addAudit(id, "System", "CREATED", `Product "${product.name}" seeded at stage ${product.lifecycleStage}.`);
@@ -70,10 +85,23 @@ export function createProduct(data, actor) {
     cost: Number(data.cost) || 0,
     owner: data.owner || "Unassigned",
     lifecycleStage: "DEVELOP",
+    revision: "A",
     createdAt: now,
     updatedAt: now,
     customers: [],
     suppliers: [],
+    components: [],
+    comments: [],
+    revisionHistory: [
+      {
+        id: nextId("REV"),
+        revision: "A",
+        stage: "DEVELOP",
+        decidedBy: actor,
+        decidedAt: now,
+        comment: "Initial creation.",
+      },
+    ],
   };
   products.set(id, product);
   addAudit(id, actor, "CREATED", `Product "${product.name}" created in Develop stage.`);
@@ -180,6 +208,75 @@ export function deleteSupplier(productId, supplierId, actor) {
   return true;
 }
 
+// ---- Components (Bill of Materials) ----
+
+export function addComponent(productId, data, actor) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const component = {
+    id: nextId("CMP"),
+    partNumber: data.partNumber || "",
+    name: data.name,
+    quantity: Number(data.quantity) || 1,
+    unitCost: Number(data.unitCost) || 0,
+  };
+  product.components.push(component);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "COMPONENT_ADDED", `Component "${component.name}" added to BOM.`);
+  return component;
+}
+
+export function updateComponent(productId, componentId, data, actor) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const component = product.components.find((c) => c.id === componentId);
+  if (!component) return null;
+  if (data.partNumber !== undefined) component.partNumber = data.partNumber;
+  if (data.name !== undefined) component.name = data.name;
+  if (data.quantity !== undefined) component.quantity = Number(data.quantity) || 0;
+  if (data.unitCost !== undefined) component.unitCost = Number(data.unitCost) || 0;
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "COMPONENT_UPDATED", `Component "${component.name}" updated in BOM.`);
+  return component;
+}
+
+export function deleteComponent(productId, componentId, actor) {
+  const product = products.get(productId);
+  if (!product) return false;
+  const idx = product.components.findIndex((c) => c.id === componentId);
+  if (idx === -1) return false;
+  const [removed] = product.components.splice(idx, 1);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "COMPONENT_REMOVED", `Component "${removed.name}" removed from BOM.`);
+  return true;
+}
+
+// ---- Comments (collaboration thread) ----
+
+export function addComment(productId, text, author) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const comment = {
+    id: nextId("CMT"),
+    author,
+    text,
+    timestamp: new Date().toISOString(),
+  };
+  product.comments.push(comment);
+  addAudit(productId, author, "COMMENT_ADDED", `Comment posted.`);
+  return comment;
+}
+
+export function deleteComment(productId, commentId, actor) {
+  const product = products.get(productId);
+  if (!product) return false;
+  const idx = product.comments.findIndex((c) => c.id === commentId);
+  if (idx === -1) return false;
+  product.comments.splice(idx, 1);
+  addAudit(productId, actor, "COMMENT_REMOVED", `Comment removed.`);
+  return true;
+}
+
 // ---- Lifecycle stage-change requests (approval workflow) ----
 
 export function listStageRequests({ status, productId } = {}) {
@@ -236,7 +333,16 @@ export function decideStageRequest(id, approve, approver, comment) {
   const product = products.get(request.productId);
   if (approve && product) {
     product.lifecycleStage = request.toStage;
-    product.updatedAt = new Date().toISOString();
+    product.revision = nextRevision(product.revision);
+    product.updatedAt = request.decidedAt;
+    product.revisionHistory.push({
+      id: nextId("REV"),
+      revision: product.revision,
+      stage: request.toStage,
+      decidedBy: approver,
+      decidedAt: request.decidedAt,
+      comment: comment || "",
+    });
   }
   addAudit(
     request.productId,
@@ -247,6 +353,67 @@ export function decideStageRequest(id, approve, approver, comment) {
     }`
   );
   return request;
+}
+
+// ---- Dashboard / reporting ----
+
+export function getDashboardStats() {
+  const allProducts = listProducts();
+
+  const byStage = {};
+  STAGE_IDS.forEach((id) => (byStage[id] = 0));
+  const byCategory = {};
+  for (const p of allProducts) {
+    byStage[p.lifecycleStage] = (byStage[p.lifecycleStage] || 0) + 1;
+    byCategory[p.category] = (byCategory[p.category] || 0) + 1;
+  }
+
+  const allRequests = Array.from(stageRequests.values());
+  const pendingApprovals = allRequests.filter((r) => r.status === "PENDING").length;
+  const approvedRequests = allRequests.filter((r) => r.status === "APPROVED").length;
+  const rejectedRequests = allRequests.filter((r) => r.status === "REJECTED").length;
+
+  // Average time spent in each stage, derived from the approved-request
+  // timeline per product (mirrors ENOVIA's stage-duration/cycle-time reporting).
+  const stageDurationTotals = {};
+  STAGE_IDS.forEach((id) => (stageDurationTotals[id] = { totalMs: 0, count: 0 }));
+
+  for (const p of allProducts) {
+    const approvedForProduct = allRequests
+      .filter((r) => r.productId === p.id && r.status === "APPROVED")
+      .sort((a, b) => new Date(a.decidedAt) - new Date(b.decidedAt));
+    let cursor = new Date(p.createdAt);
+    let stage = "DEVELOP";
+    for (const r of approvedForProduct) {
+      const transitionedAt = new Date(r.decidedAt);
+      stageDurationTotals[stage].totalMs += transitionedAt - cursor;
+      stageDurationTotals[stage].count += 1;
+      cursor = transitionedAt;
+      stage = r.toStage;
+    }
+  }
+
+  const avgDaysInStage = {};
+  STAGE_IDS.forEach((id) => {
+    const { totalMs, count } = stageDurationTotals[id];
+    avgDaysInStage[id] = count > 0 ? Math.round((totalMs / count / (1000 * 60 * 60 * 24)) * 10) / 10 : null;
+  });
+
+  const totalBomCost = allProducts.reduce(
+    (sum, p) => sum + p.components.reduce((s, c) => s + c.quantity * c.unitCost, 0),
+    0
+  );
+
+  return {
+    totalProducts: allProducts.length,
+    byStage,
+    byCategory,
+    pendingApprovals,
+    approvedRequests,
+    rejectedRequests,
+    avgDaysInStage,
+    totalBomCost: Math.round(totalBomCost * 100) / 100,
+  };
 }
 
 // ---- Audit log ----

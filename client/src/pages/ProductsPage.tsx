@@ -136,7 +136,9 @@ export default function ProductsPage() {
                 <h3>{p.name}</h3>
                 <StageBadge stage={p.lifecycleStage} />
               </div>
-              <p className="product-sku">SKU {p.sku}</p>
+              <p className="product-sku">
+                SKU {p.sku} · Rev {p.revision}
+              </p>
               <p className="product-description">{p.description || "No description yet."}</p>
               <div className="product-card-meta">
                 <span>{p.category}</span>
@@ -144,6 +146,7 @@ export default function ProductsPage() {
                 <span>{p.owner}</span>
               </div>
               <div className="product-card-footer">
+                <span>{p.components.length} components</span>
                 <span>{p.customers.length} customers</span>
                 <span>{p.suppliers.length} suppliers</span>
                 <button

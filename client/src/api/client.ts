@@ -1,4 +1,14 @@
-import type { AuditEntry, Customer, Product, Stage, StageRequest, Supplier } from "../types";
+import type {
+  AuditEntry,
+  Comment,
+  Component,
+  Customer,
+  DashboardStats,
+  Product,
+  Stage,
+  StageRequest,
+  Supplier,
+} from "../types";
 
 const BASE = "/api";
 
@@ -68,6 +78,33 @@ export const api = {
       body: JSON.stringify({ actor }),
     }),
 
+  addComponent: (productId: string, data: Partial<Component>, actor: string) =>
+    request<Component>(`/products/${productId}/components`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  updateComponent: (productId: string, componentId: string, data: Partial<Component>, actor: string) =>
+    request<Component>(`/products/${productId}/components/${componentId}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  deleteComponent: (productId: string, componentId: string, actor: string) =>
+    request<void>(`/products/${productId}/components/${componentId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ actor }),
+    }),
+
+  addComment: (productId: string, text: string, actor: string) =>
+    request<Comment>(`/products/${productId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text, actor }),
+    }),
+  deleteComment: (productId: string, commentId: string, actor: string) =>
+    request<void>(`/products/${productId}/comments/${commentId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ actor }),
+    }),
+
   listStageRequests: (params?: { status?: string; productId?: string }) => {
     const query = new URLSearchParams();
     if (params?.status) query.set("status", params.status);
@@ -80,17 +117,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ productId, toStage, actor, comment }),
     }),
-  approveStageRequest: (id: string, actor: string, comment: string) =>
+  approveStageRequest: (id: string, actor: string, role: string, comment: string) =>
     request<StageRequest>(`/stage-requests/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ actor, comment }),
+      body: JSON.stringify({ actor, role, comment }),
     }),
-  rejectStageRequest: (id: string, actor: string, comment: string) =>
+  rejectStageRequest: (id: string, actor: string, role: string, comment: string) =>
     request<StageRequest>(`/stage-requests/${id}/reject`, {
       method: "POST",
-      body: JSON.stringify({ actor, comment }),
+      body: JSON.stringify({ actor, role, comment }),
     }),
 
   getProductRequests: (productId: string) => request<StageRequest[]>(`/products/${productId}/requests`),
   getProductAudit: (productId: string) => request<AuditEntry[]>(`/products/${productId}/audit`),
+  getDashboard: () => request<DashboardStats>("/dashboard"),
 };

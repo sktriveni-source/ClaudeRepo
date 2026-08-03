@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import CommentThread from "../components/CommentThread";
+import ComponentForm, { type ComponentFormValues } from "../components/ComponentForm";
 import ConfirmDialog from "../components/ConfirmDialog";
 import CustomerForm, { type CustomerFormValues } from "../components/CustomerForm";
 import LifecycleTracker from "../components/LifecycleTracker";
@@ -9,9 +11,9 @@ import StageBadge from "../components/StageBadge";
 import StageChangeForm from "../components/StageChangeForm";
 import SupplierForm, { type SupplierFormValues } from "../components/SupplierForm";
 import { useUser } from "../context/UserContext";
-import type { AuditEntry, Customer, Product, Stage, StageRequest, Supplier } from "../types";
+import type { AuditEntry, Component, Customer, Product, Stage, StageRequest, Supplier } from "../types";
 
-type Tab = "overview" | "customers" | "suppliers" | "workflow";
+type Tab = "overview" | "components" | "customers" | "suppliers" | "discussion" | "workflow";
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -35,6 +37,9 @@ export default function ProductDetailPage() {
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
   const [deleteSupplier, setDeleteSupplier] = useState<Supplier | null>(null);
+  const [showAddComponent, setShowAddComponent] = useState(false);
+  const [editComponent, setEditComponent] = useState<Component | null>(null);
+  const [deleteComponent, setDeleteComponent] = useState<Component | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function load() {
@@ -68,6 +73,7 @@ export default function ProductDetailPage() {
   if (error || !product) return <div className="state-message error">{error || "Product not found."}</div>;
 
   const pending = requests.find((r) => r.status === "PENDING") || null;
+  const bomCost = product.components.reduce((sum, c) => sum + c.quantity * c.unitCost, 0);
 
   async function handleEdit(values: ProductFormValues) {
     const updated = await api.updateProduct(product!.id, values, actorLabel);
@@ -77,7 +83,7 @@ export default function ProductDetailPage() {
 
   async function handleDelete() {
     await api.deleteProduct(product!.id, actorLabel);
-    navigate("/");
+    navigate("/products");
   }
 
   async function handleStageChange(toStage: string, comment: string) {
@@ -97,7 +103,7 @@ export default function ProductDetailPage() {
 
   return (
     <div className="page">
-      <button className="btn btn-link" onClick={() => navigate("/")}>
+      <button className="btn btn-link" onClick={() => navigate("/products")}>
         ← Back to products
       </button>
 
@@ -106,6 +112,7 @@ export default function ProductDetailPage() {
           <div className="detail-title-row">
             <h1>{product.name}</h1>
             <StageBadge stage={product.lifecycleStage} />
+            <span className="revision-badge">Rev {product.revision}</span>
           </div>
           <p className="page-subtitle">
             SKU {product.sku} · {product.category} · Owner {product.owner}
@@ -146,11 +153,17 @@ export default function ProductDetailPage() {
         <button className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
           Overview
         </button>
+        <button className={tab === "components" ? "tab active" : "tab"} onClick={() => setTab("components")}>
+          Components ({product.components.length})
+        </button>
         <button className={tab === "customers" ? "tab active" : "tab"} onClick={() => setTab("customers")}>
           Customers ({product.customers.length})
         </button>
         <button className={tab === "suppliers" ? "tab active" : "tab"} onClick={() => setTab("suppliers")}>
           Suppliers ({product.suppliers.length})
+        </button>
+        <button className={tab === "discussion" ? "tab active" : "tab"} onClick={() => setTab("discussion")}>
+          Discussion ({product.comments.length})
         </button>
         <button className={tab === "workflow" ? "tab active" : "tab"} onClick={() => setTab("workflow")}>
           Workflow &amp; audit
@@ -178,6 +191,14 @@ export default function ProductDetailPage() {
               </dd>
             </div>
             <div>
+              <dt>BOM rollup cost</dt>
+              <dd>${bomCost.toFixed(2)}</dd>
+            </div>
+            <div>
+              <dt>Revision</dt>
+              <dd>{product.revision}</dd>
+            </div>
+            <div>
               <dt>Created</dt>
               <dd>{new Date(product.createdAt).toLocaleString()}</dd>
             </div>
@@ -186,6 +207,57 @@ export default function ProductDetailPage() {
               <dd>{new Date(product.updatedAt).toLocaleString()}</dd>
             </div>
           </dl>
+        </div>
+      )}
+
+      {tab === "components" && (
+        <div className="panel">
+          <div className="panel-header">
+            <h3>Bill of materials</h3>
+            <button className="btn btn-secondary" onClick={() => setShowAddComponent(true)}>
+              + Add component
+            </button>
+          </div>
+          {product.components.length === 0 ? (
+            <p className="hint-text">No components recorded for this product's BOM yet.</p>
+          ) : (
+            <>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Part number</th>
+                    <th>Component</th>
+                    <th>Qty / unit</th>
+                    <th>Unit cost</th>
+                    <th>Extended cost</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {product.components.map((c) => (
+                    <tr key={c.id}>
+                      <td>{c.partNumber || "—"}</td>
+                      <td>{c.name}</td>
+                      <td>{c.quantity}</td>
+                      <td>${c.unitCost.toFixed(2)}</td>
+                      <td>${(c.quantity * c.unitCost).toFixed(2)}</td>
+                      <td className="table-actions">
+                        <button className="btn btn-link" onClick={() => setEditComponent(c)}>
+                          Edit
+                        </button>
+                        <button className="btn btn-link danger" onClick={() => setDeleteComponent(c)}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="bom-rollup">
+                BOM rollup cost: <strong>${bomCost.toFixed(2)}</strong> per unit
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -281,6 +353,30 @@ export default function ProductDetailPage() {
         </div>
       )}
 
+      {tab === "discussion" && (
+        <div className="panel">
+          <h3>Discussion</h3>
+          <CommentThread
+            comments={product.comments}
+            currentActor={actorLabel}
+            onPost={(text) =>
+              withActionErrors(async () => {
+                const c = await api.addComment(product.id, text, actorLabel);
+                setProduct((p) => (p ? { ...p, comments: [...p.comments, c] } : p));
+              })
+            }
+            onDelete={(commentId) =>
+              withActionErrors(async () => {
+                await api.deleteComment(product.id, commentId, actorLabel);
+                setProduct((p) =>
+                  p ? { ...p, comments: p.comments.filter((c) => c.id !== commentId) } : p
+                );
+              })
+            }
+          />
+        </div>
+      )}
+
       {tab === "workflow" && (
         <div className="panel">
           <h3>Stage-change requests</h3>
@@ -309,6 +405,34 @@ export default function ProductDetailPage() {
                     <td>{r.requestedBy}</td>
                     <td>{r.decidedBy || "—"}</td>
                     <td>{r.decisionComment || r.requestComment || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <h3 className="section-spacer">Revision history</h3>
+          {product.revisionHistory.length === 0 ? (
+            <p className="hint-text">No revisions recorded yet.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Revision</th>
+                  <th>Stage</th>
+                  <th>Released by</th>
+                  <th>Date</th>
+                  <th>Comment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...product.revisionHistory].reverse().map((rev) => (
+                  <tr key={rev.id}>
+                    <td>Rev {rev.revision}</td>
+                    <td>{rev.stage}</td>
+                    <td>{rev.decidedBy}</td>
+                    <td>{new Date(rev.decidedAt).toLocaleString()}</td>
+                    <td>{rev.comment || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -456,6 +580,54 @@ export default function ProductDetailPage() {
             })
           }
           onCancel={() => setDeleteSupplier(null)}
+        />
+      )}
+
+      {showAddComponent && (
+        <ComponentForm
+          onSubmit={async (values: ComponentFormValues) =>
+            withActionErrors(async () => {
+              const c = await api.addComponent(product.id, values, actorLabel);
+              setProduct((p) => (p ? { ...p, components: [...p.components, c] } : p));
+              setShowAddComponent(false);
+            })
+          }
+          onClose={() => setShowAddComponent(false)}
+        />
+      )}
+
+      {editComponent && (
+        <ComponentForm
+          initial={editComponent}
+          onSubmit={async (values: ComponentFormValues) =>
+            withActionErrors(async () => {
+              const c = await api.updateComponent(product.id, editComponent.id, values, actorLabel);
+              setProduct((p) =>
+                p ? { ...p, components: p.components.map((x) => (x.id === c.id ? c : x)) } : p
+              );
+              setEditComponent(null);
+            })
+          }
+          onClose={() => setEditComponent(null)}
+        />
+      )}
+
+      {deleteComponent && (
+        <ConfirmDialog
+          title="Remove component"
+          message={`Remove "${deleteComponent.name}" from this product's BOM?`}
+          confirmLabel="Remove"
+          danger
+          onConfirm={() =>
+            withActionErrors(async () => {
+              await api.deleteComponent(product.id, deleteComponent.id, actorLabel);
+              setProduct((p) =>
+                p ? { ...p, components: p.components.filter((x) => x.id !== deleteComponent.id) } : p
+              );
+              setDeleteComponent(null);
+            })
+          }
+          onCancel={() => setDeleteComponent(null)}
         />
       )}
     </div>

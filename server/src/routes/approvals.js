@@ -34,7 +34,16 @@ approvalsRouter.post("/", (req, res) => {
   res.status(201).json(request);
 });
 
+function requireApproverRole(req, res) {
+  if (req.body.role !== "Approver") {
+    res.status(403).json({ error: "Only a user acting as Approver can decide this request" });
+    return false;
+  }
+  return true;
+}
+
 approvalsRouter.post("/:id/approve", (req, res) => {
+  if (!requireApproverRole(req, res)) return;
   const approver = actorOf(req);
   const request = db.decideStageRequest(req.params.id, true, approver, req.body.comment);
   if (!request) return res.status(404).json({ error: "Pending request not found" });
@@ -42,6 +51,7 @@ approvalsRouter.post("/:id/approve", (req, res) => {
 });
 
 approvalsRouter.post("/:id/reject", (req, res) => {
+  if (!requireApproverRole(req, res)) return;
   const approver = actorOf(req);
   const request = db.decideStageRequest(req.params.id, false, approver, req.body.comment);
   if (!request) return res.status(404).json({ error: "Pending request not found" });

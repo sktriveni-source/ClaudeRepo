@@ -3,6 +3,7 @@ import cors from "cors";
 import { productsRouter } from "./routes/products.js";
 import { approvalsRouter } from "./routes/approvals.js";
 import { stagesRouter } from "./routes/stages.js";
+import { dashboardRouter } from "./routes/dashboard.js";
 import { listAuditLog } from "./store/db.js";
 
 const app = express();
@@ -15,6 +16,7 @@ app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use("/api/products", productsRouter);
 app.use("/api/stage-requests", approvalsRouter);
 app.use("/api/stages", stagesRouter);
+app.use("/api/dashboard", dashboardRouter);
 app.get("/api/audit", (req, res) => res.json(listAuditLog()));
 
 app.use((req, res) => {

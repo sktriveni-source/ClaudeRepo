@@ -33,12 +33,15 @@ export default function ApprovalsPage() {
   const pending = requests.filter((r) => r.status === "PENDING");
   const decided = requests.filter((r) => r.status !== "PENDING");
 
+  const canDecide = persona.role === "Approver";
+
   async function decide(id: string, approve: boolean) {
+    if (!canDecide) return;
     setBusyId(id);
     setError(null);
     try {
       const fn = approve ? api.approveStageRequest : api.rejectStageRequest;
-      await fn(id, actorLabel, comments[id] || "");
+      await fn(id, actorLabel, persona.role, comments[id] || "");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to record decision.");
@@ -62,6 +65,13 @@ export default function ApprovalsPage() {
       </div>
 
       {error && <div className="form-error">{error}</div>}
+
+      {!canDecide && pending.length > 0 && (
+        <div className="form-warning">
+          You're acting as a {persona.role}. Switch to an Approver persona in the header to approve or
+          reject requests — mirrors ENOVIA's role-based change assignments.
+        </div>
+      )}
 
       {pending.length === 0 ? (
         <div className="state-message">No pending requests. Everything is caught up.</div>
@@ -91,14 +101,16 @@ export default function ApprovalsPage() {
               <div className="form-actions">
                 <button
                   className="btn btn-danger-ghost"
-                  disabled={busyId === r.id}
+                  disabled={busyId === r.id || !canDecide}
+                  title={!canDecide ? "Switch to an Approver persona to decide" : undefined}
                   onClick={() => decide(r.id, false)}
                 >
                   Reject
                 </button>
                 <button
                   className="btn btn-primary"
-                  disabled={busyId === r.id}
+                  disabled={busyId === r.id || !canDecide}
+                  title={!canDecide ? "Switch to an Approver persona to decide" : undefined}
                   onClick={() => decide(r.id, true)}
                 >
                   {busyId === r.id ? "Saving…" : "Approve"}

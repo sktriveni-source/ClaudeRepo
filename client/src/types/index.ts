@@ -27,6 +27,30 @@ export interface Supplier {
   country?: string;
 }
 
+export interface Component {
+  id: string;
+  partNumber: string;
+  name: string;
+  quantity: number;
+  unitCost: number;
+}
+
+export interface Comment {
+  id: string;
+  author: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface RevisionEntry {
+  id: string;
+  revision: string;
+  stage: StageId;
+  decidedBy: string;
+  decidedAt: string;
+  comment: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -37,10 +61,14 @@ export interface Product {
   cost: number;
   owner: string;
   lifecycleStage: StageId;
+  revision: string;
   createdAt: string;
   updatedAt: string;
   customers: Customer[];
   suppliers: Supplier[];
+  components: Component[];
+  comments: Comment[];
+  revisionHistory: RevisionEntry[];
 }
 
 export type RequestStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -67,4 +95,15 @@ export interface AuditEntry {
   action: string;
   details: string;
   timestamp: string;
+}
+
+export interface DashboardStats {
+  totalProducts: number;
+  byStage: Record<StageId, number>;
+  byCategory: Record<string, number>;
+  pendingApprovals: number;
+  approvedRequests: number;
+  rejectedRequests: number;
+  avgDaysInStage: Record<StageId, number | null>;
+  totalBomCost: number;
 }

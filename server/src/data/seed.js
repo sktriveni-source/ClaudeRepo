@@ -28,6 +28,12 @@ export const seedProducts = [
         since: "2024-06-01",
       },
     ],
+    components: [
+      { partNumber: "AFT-100-PCB", name: "Main control PCB", quantity: 1, unitCost: 18.5 },
+      { partNumber: "AFT-100-SNS", name: "Temperature/humidity sensor", quantity: 1, unitCost: 6.25 },
+      { partNumber: "AFT-100-WFI", name: "Wi-Fi radio module", quantity: 1, unitCost: 4.8 },
+      { partNumber: "AFT-100-ENC", name: "Injection-molded enclosure", quantity: 1, unitCost: 5.9 },
+    ],
     suppliers: [
       {
         name: "Sunrise Components Ltd",
@@ -59,6 +65,12 @@ export const seedProducts = [
         region: "AMER",
         since: "2022-03-15",
       },
+    ],
+    components: [
+      { partNumber: "TBH-220-BODY", name: "45L ripstop nylon body", quantity: 1, unitCost: 14.0 },
+      { partNumber: "TBH-220-FRM", name: "Aluminum frame stays", quantity: 2, unitCost: 3.75 },
+      { partNumber: "TBH-220-BUC", name: "Quick-release buckle set", quantity: 4, unitCost: 0.85 },
+      { partNumber: "TBH-220-HYD", name: "Hydration bladder compartment", quantity: 1, unitCost: 4.2 },
     ],
     suppliers: [
       {
