@@ -1,85 +1,134 @@
-import type { Booking, City, Passenger, SearchResult, SeatMapResponse, Train } from "../types";
+import type {
+  AuditEntry,
+  Comment,
+  Component,
+  Customer,
+  DashboardStats,
+  Product,
+  Stage,
+  StageRequest,
+  Supplier,
+} from "../types";
 
 const BASE = "/api";
 
-class ApiRequestError extends Error {
-  code?: string;
-  status: number;
-  constructor(message: string, status: number, code?: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
   });
-  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiRequestError(body.error || "Request failed", res.status, body.code);
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.error) message = body.error;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
   }
-  return body as T;
+  if (res.status === 204) return undefined as T;
+  return res.json();
 }
 
-export { ApiRequestError };
+export const api = {
+  getStages: () => request<Stage[]>("/stages"),
 
-export function getCities(): Promise<City[]> {
-  return request("/cities");
-}
+  listProducts: () => request<Product[]>("/products"),
+  getProduct: (id: string) => request<Product>(`/products/${id}`),
+  createProduct: (data: Partial<Product>, actor: string) =>
+    request<Product>("/products", { method: "POST", body: JSON.stringify({ ...data, actor }) }),
+  updateProduct: (id: string, data: Partial<Product>, actor: string) =>
+    request<Product>(`/products/${id}`, { method: "PUT", body: JSON.stringify({ ...data, actor }) }),
+  deleteProduct: (id: string, actor: string) =>
+    request<void>(`/products/${id}`, { method: "DELETE", body: JSON.stringify({ actor }) }),
 
-export function searchTrains(from: string, to: string, date: string): Promise<SearchResult> {
-  const params = new URLSearchParams({ from, to, date });
-  return request(`/trains/search?${params.toString()}`);
-}
+  addCustomer: (productId: string, data: Partial<Customer>, actor: string) =>
+    request<Customer>(`/products/${productId}/customers`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  updateCustomer: (productId: string, customerId: string, data: Partial<Customer>, actor: string) =>
+    request<Customer>(`/products/${productId}/customers/${customerId}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  deleteCustomer: (productId: string, customerId: string, actor: string) =>
+    request<void>(`/products/${productId}/customers/${customerId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ actor }),
+    }),
 
-export function getTrain(trainId: string): Promise<Train> {
-  return request(`/trains/${trainId}`);
-}
+  addSupplier: (productId: string, data: Partial<Supplier>, actor: string) =>
+    request<Supplier>(`/products/${productId}/suppliers`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  updateSupplier: (productId: string, supplierId: string, data: Partial<Supplier>, actor: string) =>
+    request<Supplier>(`/products/${productId}/suppliers/${supplierId}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  deleteSupplier: (productId: string, supplierId: string, actor: string) =>
+    request<void>(`/products/${productId}/suppliers/${supplierId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ actor }),
+    }),
 
-export function getSeatMap(trainId: string, classId: string, date: string): Promise<SeatMapResponse> {
-  const params = new URLSearchParams({ classId, date });
-  return request(`/trains/${trainId}/seats?${params.toString()}`);
-}
+  addComponent: (productId: string, data: Partial<Component>, actor: string) =>
+    request<Component>(`/products/${productId}/components`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  updateComponent: (productId: string, componentId: string, data: Partial<Component>, actor: string) =>
+    request<Component>(`/products/${productId}/components/${componentId}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...data, actor }),
+    }),
+  deleteComponent: (productId: string, componentId: string, actor: string) =>
+    request<void>(`/products/${productId}/components/${componentId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ actor }),
+    }),
 
-export interface BlockSeatsPayload {
-  trainId: string;
-  date: string;
-  classId: string;
-  seatNumbers: string[];
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-}
+  addComment: (productId: string, text: string, actor: string) =>
+    request<Comment>(`/products/${productId}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ text, actor }),
+    }),
+  deleteComment: (productId: string, commentId: string, actor: string) =>
+    request<void>(`/products/${productId}/comments/${commentId}`, {
+      method: "DELETE",
+      body: JSON.stringify({ actor }),
+    }),
 
-export function blockSeats(payload: BlockSeatsPayload): Promise<Booking> {
-  return request("/bookings/block", { method: "POST", body: JSON.stringify(payload) });
-}
+  listStageRequests: (params?: { status?: string; productId?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.productId) query.set("productId", params.productId);
+    const qs = query.toString();
+    return request<StageRequest[]>(`/stage-requests${qs ? `?${qs}` : ""}`);
+  },
+  requestStageChange: (productId: string, toStage: string, actor: string, comment: string) =>
+    request<StageRequest>("/stage-requests", {
+      method: "POST",
+      body: JSON.stringify({ productId, toStage, actor, comment }),
+    }),
+  approveStageRequest: (id: string, actor: string, role: string, comment: string) =>
+    request<StageRequest>(`/stage-requests/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ actor, role, comment }),
+    }),
+  rejectStageRequest: (id: string, actor: string, role: string, comment: string) =>
+    request<StageRequest>(`/stage-requests/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ actor, role, comment }),
+    }),
 
-export function getBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}`);
-}
-
-export interface PaymentPayload {
-  method: "CARD" | "UPI" | "NETBANKING";
-  cardNumber?: string;
-  cardName?: string;
-  expiry?: string;
-  cvv?: string;
-  upiId?: string;
-}
-
-export function payForBooking(bookingId: string, payload: PaymentPayload): Promise<Booking> {
-  return request(`/bookings/${bookingId}/payment`, { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function cancelBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}/cancel`, { method: "POST" });
-}
-
-export function listBookingsByEmail(email: string): Promise<Booking[]> {
-  const params = new URLSearchParams({ email });
-  return request(`/bookings?${params.toString()}`);
-}
+  getProductRequests: (productId: string) => request<StageRequest[]>(`/products/${productId}/requests`),
+  getProductAudit: (productId: string) => request<AuditEntry[]>(`/products/${productId}/audit`),
+  getDashboard: () => request<DashboardStats>("/dashboard"),
+};

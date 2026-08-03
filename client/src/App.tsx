@@ -1,30 +1,29 @@
 import { Route, Routes } from "react-router-dom";
 import Header from "./components/Header";
-import HomePage from "./pages/HomePage";
-import SearchResultsPage from "./pages/SearchResultsPage";
-import SeatSelectionPage from "./pages/SeatSelectionPage";
-import PaymentPage from "./pages/PaymentPage";
-import ConfirmationPage from "./pages/ConfirmationPage";
-import MyBookingsPage from "./pages/MyBookingsPage";
+import { UserProvider } from "./context/UserContext";
+import ApprovalsPage from "./pages/ApprovalsPage";
+import DashboardPage from "./pages/DashboardPage";
+import ProductDetailPage from "./pages/ProductDetailPage";
+import ProductsPage from "./pages/ProductsPage";
 
 export default function App() {
   return (
-    <div className="app-shell">
-      <Header />
-      <main className="main-content">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/search" element={<SearchResultsPage />} />
-          <Route path="/trains/:trainId/seats" element={<SeatSelectionPage />} />
-          <Route path="/booking/:bookingId/payment" element={<PaymentPage />} />
-          <Route path="/booking/:bookingId/confirmation" element={<ConfirmationPage />} />
-          <Route path="/my-bookings" element={<MyBookingsPage />} />
-          <Route path="*" element={<div className="state-message">Page not found.</div>} />
-        </Routes>
-      </main>
-      <footer className="site-footer no-print">
-        RailYatra demo app · Bangalore · Mumbai · Delhi · Chennai
-      </footer>
-    </div>
+    <UserProvider>
+      <div className="app-shell">
+        <Header />
+        <main className="main-content">
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/:id" element={<ProductDetailPage />} />
+            <Route path="/approvals" element={<ApprovalsPage />} />
+            <Route path="*" element={<div className="state-message">Page not found.</div>} />
+          </Routes>
+        </main>
+        <footer className="site-footer">
+          ProductPulse · centralized product lifecycle &amp; approval management
+        </footer>
+      </div>
+    </UserProvider>
   );
 }
