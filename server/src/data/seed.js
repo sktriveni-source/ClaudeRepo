@@ -1,0 +1,171 @@
+// Initial demo data so the app isn't empty on first run.
+export const seedProducts = [
+  {
+    name: "AeroFlow Smart Thermostat",
+    sku: "AFT-100",
+    category: "Smart Home",
+    description:
+      "Wi-Fi enabled thermostat with adaptive scheduling and energy usage reports.",
+    price: 129.99,
+    cost: 54.0,
+    owner: "Priya Nair",
+    lifecycleStage: "GROWTH",
+    customers: [
+      {
+        name: "Meera Kapoor",
+        company: "GreenNest Realty",
+        email: "meera.kapoor@greennest.example",
+        phone: "+91 98765 43210",
+        region: "APAC",
+        since: "2024-02-10",
+      },
+      {
+        name: "Daniel Osei",
+        company: "Osei Home Solutions",
+        email: "daniel.osei@oseihome.example",
+        phone: "+44 7700 900321",
+        region: "EMEA",
+        since: "2024-06-01",
+      },
+    ],
+    suppliers: [
+      {
+        name: "Sunrise Components Ltd",
+        company: "Sunrise Components Ltd",
+        email: "sales@sunrisecomponents.example",
+        phone: "+86 138 0000 1234",
+        material: "Sensor modules & PCBs",
+        leadTimeDays: 21,
+        country: "China",
+      },
+    ],
+  },
+  {
+    name: "TrailBlaze Hiking Backpack",
+    sku: "TBH-220",
+    category: "Outdoor Gear",
+    description:
+      "45L weatherproof backpack with modular straps and hydration bladder compartment.",
+    price: 89.5,
+    cost: 32.0,
+    owner: "Carlos Mendes",
+    lifecycleStage: "MATURITY",
+    customers: [
+      {
+        name: "Outdoor World Retail",
+        company: "Outdoor World Retail",
+        email: "buying@outdoorworld.example",
+        phone: "+1 415 555 0199",
+        region: "AMER",
+        since: "2022-03-15",
+      },
+    ],
+    suppliers: [
+      {
+        name: "Everstrong Textiles",
+        company: "Everstrong Textiles Pvt Ltd",
+        email: "orders@everstrong.example",
+        phone: "+91 44 2345 6789",
+        material: "Ripstop nylon fabric",
+        leadTimeDays: 30,
+        country: "India",
+      },
+      {
+        name: "ClipFast Hardware",
+        company: "ClipFast Hardware Co",
+        email: "info@clipfast.example",
+        phone: "+886 2 1234 5678",
+        material: "Buckles & zippers",
+        leadTimeDays: 14,
+        country: "Taiwan",
+      },
+    ],
+  },
+  {
+    name: "PulseFit Heart Rate Band",
+    sku: "PFB-050",
+    category: "Wearables",
+    description:
+      "Bluetooth chest strap heart rate monitor for endurance training.",
+    price: 45.0,
+    cost: 18.0,
+    owner: "Aiko Tanaka",
+    lifecycleStage: "DEVELOP",
+    customers: [],
+    suppliers: [
+      {
+        name: "NovaChip Electronics",
+        company: "NovaChip Electronics",
+        email: "procurement@novachip.example",
+        phone: "+82 2 555 0134",
+        material: "BLE chipsets",
+        leadTimeDays: 40,
+        country: "South Korea",
+      },
+    ],
+  },
+  {
+    name: "ClassicBrew French Press",
+    sku: "CBF-010",
+    category: "Kitchenware",
+    description:
+      "Stainless steel double-wall insulated French press, 1L capacity.",
+    price: 34.99,
+    cost: 12.5,
+    owner: "Hannah Fischer",
+    lifecycleStage: "DECLINE",
+    customers: [
+      {
+        name: "Morning Ritual Cafes",
+        company: "Morning Ritual Cafes",
+        email: "supply@morningritual.example",
+        phone: "+49 30 555 0177",
+        region: "EMEA",
+        since: "2019-09-01",
+      },
+    ],
+    suppliers: [
+      {
+        name: "SteelCraft Works",
+        company: "SteelCraft Works",
+        email: "sales@steelcraft.example",
+        phone: "+91 20 4455 6677",
+        material: "Stainless steel components",
+        leadTimeDays: 18,
+        country: "India",
+      },
+    ],
+  },
+  {
+    name: "LumaGlow Desk Lamp",
+    sku: "LGD-330",
+    category: "Home Office",
+    description:
+      "Dimmable LED desk lamp with wireless charging base and USB-C port.",
+    price: 59.0,
+    cost: 21.0,
+    owner: "Priya Nair",
+    lifecycleStage: "LAUNCH",
+    customers: [
+      {
+        name: "WorkSpace Direct",
+        company: "WorkSpace Direct",
+        email: "orders@workspacedirect.example",
+        phone: "+1 212 555 0142",
+        region: "AMER",
+        since: "2025-01-20",
+      },
+    ],
+    suppliers: [
+      {
+        name: "BrightPath Electronics",
+        company: "BrightPath Electronics",
+        email: "sales@brightpath.example",
+        phone: "+86 755 1234 5678",
+        material: "LED arrays & drivers",
+        leadTimeDays: 25,
+        country: "China",
+      },
+    ],
+  },
+];

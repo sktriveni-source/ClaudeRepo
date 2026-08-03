@@ -1,105 +1,70 @@
-export interface City {
-  id: string;
-  name: string;
-  station: string;
-}
+export type StageId = "DEVELOP" | "LAUNCH" | "GROWTH" | "MATURITY" | "DECLINE";
 
-export interface TrainClass {
-  id: string;
+export interface Stage {
+  id: StageId;
   label: string;
-  coach: string;
-  totalSeats: number;
-  seatsPerRow: number;
-  fare: number;
-  available?: number;
+  order: number;
 }
 
-export interface Train {
+export interface Customer {
   id: string;
-  number: string;
   name: string;
-  from: string;
-  to: string;
-  departure: string;
-  arrival: string;
-  arrivalDayOffset: number;
-  durationMinutes: number;
-  duration: string;
-  distanceKm: number;
-  days: string[];
-  classes: TrainClass[];
+  company?: string;
+  email?: string;
+  phone?: string;
+  region?: string;
+  since?: string;
 }
 
-export interface SearchResult {
-  from: City;
-  to: City;
-  date: string;
-  weekday: string;
-  trains: Train[];
-}
-
-export type SeatStatus = "AVAILABLE" | "BLOCKED" | "BOOKED";
-
-export interface Seat {
-  seatNumber: string;
-  coach: string;
-  status: SeatStatus;
-}
-
-export interface SeatMapResponse {
-  trainId: string;
-  date: string;
-  classId: string;
-  seatsPerRow: number;
-  fare: number;
-  seats: Seat[];
-}
-
-export interface Passenger {
-  name: string;
-  age: number;
-  gender: "M" | "F" | "O";
-}
-
-export type BookingStatus = "BLOCKED" | "CONFIRMED" | "EXPIRED" | "CANCELLED";
-
-export interface Payment {
-  method: string;
-  reference: string;
-  paidAt: string;
-  amount: number;
-}
-
-export interface Booking {
+export interface Supplier {
   id: string;
-  pnr: string | null;
-  trainId: string;
-  date: string;
-  classId: string;
-  seatNumbers: string[];
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-  fare: number;
-  status: BookingStatus;
-  blockExpiresAt: number;
+  name: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  material?: string;
+  leadTimeDays?: number;
+  country?: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  description: string;
+  price: number;
+  cost: number;
+  owner: string;
+  lifecycleStage: StageId;
   createdAt: string;
   updatedAt: string;
-  payment: Payment | null;
-  train: {
-    id: string;
-    number: string;
-    name: string;
-    departure: string;
-    arrival: string;
-    duration: string;
-  };
-  from: City;
-  to: City;
-  className: string;
+  customers: Customer[];
+  suppliers: Supplier[];
 }
 
-export interface ApiError {
-  error: string;
-  code?: string;
+export type RequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface StageRequest {
+  id: string;
+  productId: string;
+  productName: string;
+  fromStage: StageId;
+  toStage: StageId;
+  status: RequestStatus;
+  requestedBy: string;
+  requestedAt: string;
+  requestComment: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionComment: string | null;
+}
+
+export interface AuditEntry {
+  id: string;
+  productId: string;
+  actor: string;
+  action: string;
+  details: string;
+  timestamp: string;
 }

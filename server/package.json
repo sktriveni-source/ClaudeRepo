@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-server",
+  "name": "plm-server",
   "version": "1.0.0",
-  "description": "Backend API for the train schedule, booking and payment app",
+  "description": "Backend API for the Product Lifecycle Management app",
   "type": "module",
   "main": "src/index.js",
   "scripts": {

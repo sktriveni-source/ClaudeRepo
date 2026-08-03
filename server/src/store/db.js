@@ -1,184 +1,258 @@
-import { trainById } from "../data/trains.js";
-import { classById } from "../data/classes.js";
-import { generatePNR } from "../utils/pnr.js";
+import { nextId } from "../utils/id.js";
+import { seedProducts } from "../data/seed.js";
 
-export const BLOCK_TTL_MS = 5 * 60 * 1000; // seats held for 5 minutes while paying
+// Centralized in-memory data store. This is the single source of truth for
+// every client of the API: products, their customers/suppliers, lifecycle
+// stage-change (approval) requests, and the audit trail all live here.
+const products = new Map();
+const stageRequests = new Map();
+const auditLog = [];
 
-// seatKey -> { status: 'BLOCKED' | 'BOOKED', bookingId, blockExpiresAt }
-const seatStatus = new Map();
-// bookingId -> booking record
-const bookings = new Map();
-
-function seatKey(trainId, date, classId, seatNumber) {
-  return `${trainId}|${date}|${classId}|${seatNumber}`;
+function addAudit(productId, actor, action, details) {
+  const entry = {
+    id: nextId("AUD"),
+    productId,
+    actor,
+    action,
+    details,
+    timestamp: new Date().toISOString(),
+  };
+  auditLog.push(entry);
+  return entry;
 }
 
-function seatNumbersForClass(classId) {
-  const cls = classById[classId];
-  if (!cls) throw new Error(`Unknown class ${classId}`);
-  return Array.from({ length: cls.totalSeats }, (_, i) => `${cls.coach}-${i + 1}`);
-}
-
-/** Lazily releases a seat entry if its hold has expired. */
-function reapIfExpired(key) {
-  const entry = seatStatus.get(key);
-  if (entry && entry.status === "BLOCKED" && entry.blockExpiresAt < Date.now()) {
-    seatStatus.delete(key);
-    const booking = bookings.get(entry.bookingId);
-    if (booking && booking.status === "BLOCKED") {
-      booking.status = "EXPIRED";
-      booking.updatedAt = new Date().toISOString();
-    }
-    return true;
-  }
-  return false;
-}
-
-export function sweepExpiredHolds() {
-  for (const key of seatStatus.keys()) {
-    reapIfExpired(key);
-  }
-}
-
-export function getSeatMap(trainId, date, classId) {
-  const train = trainById[trainId];
-  if (!train) throw new Error("Train not found");
-  const cls = train.classes.find((c) => c.id === classId);
-  if (!cls) throw new Error("Class not found on train");
-
-  return seatNumbersForClass(classId).map((seatNumber) => {
-    const key = seatKey(trainId, date, classId, seatNumber);
-    reapIfExpired(key);
-    const entry = seatStatus.get(key);
-    return {
-      seatNumber,
-      coach: cls.coach,
-      status: entry ? entry.status : "AVAILABLE",
+function seed() {
+  const now = new Date().toISOString();
+  for (const p of seedProducts) {
+    const id = nextId("PRD");
+    const product = {
+      id,
+      name: p.name,
+      sku: p.sku,
+      category: p.category,
+      description: p.description,
+      price: p.price,
+      cost: p.cost,
+      owner: p.owner,
+      lifecycleStage: p.lifecycleStage,
+      createdAt: now,
+      updatedAt: now,
+      customers: p.customers.map((c) => ({ id: nextId("CUS"), ...c })),
+      suppliers: p.suppliers.map((s) => ({ id: nextId("SUP"), ...s })),
     };
-  });
-}
-
-export function getAvailability(trainId, date, classId) {
-  const seats = getSeatMap(trainId, date, classId);
-  return seats.filter((s) => s.status === "AVAILABLE").length;
-}
-
-export class BookingError extends Error {
-  constructor(message, code = "BOOKING_ERROR") {
-    super(message);
-    this.code = code;
+    products.set(id, product);
+    addAudit(id, "System", "CREATED", `Product "${product.name}" seeded at stage ${product.lifecycleStage}.`);
   }
 }
 
-export function blockSeats({ trainId, date, classId, seatNumbers, passengers, contactEmail, contactPhone }) {
-  const train = trainById[trainId];
-  if (!train) throw new BookingError("Train not found", "NOT_FOUND");
-  const cls = train.classes.find((c) => c.id === classId);
-  if (!cls) throw new BookingError("Class not found on train", "NOT_FOUND");
-  if (!seatNumbers?.length) throw new BookingError("Select at least one seat", "INVALID_INPUT");
-  if (seatNumbers.length !== passengers?.length) {
-    throw new BookingError("Passenger details must match number of seats", "INVALID_INPUT");
-  }
+seed();
 
-  const keys = seatNumbers.map((s) => seatKey(trainId, date, classId, s));
+// ---- Products ----
 
-  // Validate all requested seats are currently free before mutating anything.
-  for (const key of keys) {
-    reapIfExpired(key);
-    if (seatStatus.has(key)) {
-      throw new BookingError("One or more selected seats are no longer available", "SEAT_TAKEN");
+export function listProducts() {
+  return Array.from(products.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function getProduct(id) {
+  return products.get(id) || null;
+}
+
+export function createProduct(data, actor) {
+  const now = new Date().toISOString();
+  const id = nextId("PRD");
+  const product = {
+    id,
+    name: data.name,
+    sku: data.sku,
+    category: data.category || "Uncategorized",
+    description: data.description || "",
+    price: Number(data.price) || 0,
+    cost: Number(data.cost) || 0,
+    owner: data.owner || "Unassigned",
+    lifecycleStage: "DEVELOP",
+    createdAt: now,
+    updatedAt: now,
+    customers: [],
+    suppliers: [],
+  };
+  products.set(id, product);
+  addAudit(id, actor, "CREATED", `Product "${product.name}" created in Develop stage.`);
+  return product;
+}
+
+export function updateProduct(id, data, actor) {
+  const product = products.get(id);
+  if (!product) return null;
+  const fields = ["name", "sku", "category", "description", "price", "cost", "owner"];
+  const changes = [];
+  for (const field of fields) {
+    if (data[field] === undefined) continue;
+    const newVal = field === "price" || field === "cost" ? Number(data[field]) : data[field];
+    if (product[field] !== newVal) {
+      changes.push(`${field}: "${product[field]}" -> "${newVal}"`);
+      product[field] = newVal;
     }
   }
+  product.updatedAt = new Date().toISOString();
+  if (changes.length) {
+    addAudit(id, actor, "UPDATED", `Fields changed: ${changes.join(", ")}`);
+  }
+  return product;
+}
 
-  const now = Date.now();
-  const bookingId = `BK-${now}-${Math.random().toString(36).slice(2, 8)}`;
-  const blockExpiresAt = now + BLOCK_TTL_MS;
+export function deleteProduct(id, actor) {
+  const product = products.get(id);
+  if (!product) return false;
+  products.delete(id);
+  // Clean up any stage requests tied to this product.
+  for (const [reqId, req] of stageRequests.entries()) {
+    if (req.productId === id) stageRequests.delete(reqId);
+  }
+  addAudit(id, actor, "DELETED", `Product "${product.name}" deleted.`);
+  return true;
+}
 
-  keys.forEach((key) => {
-    seatStatus.set(key, { status: "BLOCKED", bookingId, blockExpiresAt });
-  });
+// ---- Customers ----
 
-  const fare = cls.fare * seatNumbers.length;
-  const booking = {
-    id: bookingId,
-    pnr: null,
-    trainId,
-    date,
-    classId,
-    seatNumbers,
-    passengers,
-    contactEmail,
-    contactPhone,
-    fare,
-    status: "BLOCKED",
-    blockExpiresAt,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    payment: null,
+export function addCustomer(productId, data, actor) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const customer = { id: nextId("CUS"), ...data };
+  product.customers.push(customer);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "CUSTOMER_ADDED", `Customer "${customer.name}" added.`);
+  return customer;
+}
+
+export function updateCustomer(productId, customerId, data, actor) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const customer = product.customers.find((c) => c.id === customerId);
+  if (!customer) return null;
+  Object.assign(customer, data);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "CUSTOMER_UPDATED", `Customer "${customer.name}" updated.`);
+  return customer;
+}
+
+export function deleteCustomer(productId, customerId, actor) {
+  const product = products.get(productId);
+  if (!product) return false;
+  const idx = product.customers.findIndex((c) => c.id === customerId);
+  if (idx === -1) return false;
+  const [removed] = product.customers.splice(idx, 1);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "CUSTOMER_REMOVED", `Customer "${removed.name}" removed.`);
+  return true;
+}
+
+// ---- Suppliers ----
+
+export function addSupplier(productId, data, actor) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const supplier = { id: nextId("SUP"), ...data };
+  product.suppliers.push(supplier);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "SUPPLIER_ADDED", `Supplier "${supplier.name}" added.`);
+  return supplier;
+}
+
+export function updateSupplier(productId, supplierId, data, actor) {
+  const product = products.get(productId);
+  if (!product) return null;
+  const supplier = product.suppliers.find((s) => s.id === supplierId);
+  if (!supplier) return null;
+  Object.assign(supplier, data);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "SUPPLIER_UPDATED", `Supplier "${supplier.name}" updated.`);
+  return supplier;
+}
+
+export function deleteSupplier(productId, supplierId, actor) {
+  const product = products.get(productId);
+  if (!product) return false;
+  const idx = product.suppliers.findIndex((s) => s.id === supplierId);
+  if (idx === -1) return false;
+  const [removed] = product.suppliers.splice(idx, 1);
+  product.updatedAt = new Date().toISOString();
+  addAudit(productId, actor, "SUPPLIER_REMOVED", `Supplier "${removed.name}" removed.`);
+  return true;
+}
+
+// ---- Lifecycle stage-change requests (approval workflow) ----
+
+export function listStageRequests({ status, productId } = {}) {
+  let list = Array.from(stageRequests.values());
+  if (status) list = list.filter((r) => r.status === status);
+  if (productId) list = list.filter((r) => r.productId === productId);
+  return list.sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+}
+
+export function getStageRequest(id) {
+  return stageRequests.get(id) || null;
+}
+
+export function hasPendingRequest(productId) {
+  return Array.from(stageRequests.values()).some(
+    (r) => r.productId === productId && r.status === "PENDING"
+  );
+}
+
+export function createStageRequest(product, toStage, requestedBy, comment) {
+  const id = nextId("REQ");
+  const request = {
+    id,
+    productId: product.id,
+    productName: product.name,
+    fromStage: product.lifecycleStage,
+    toStage,
+    status: "PENDING",
+    requestedBy,
+    requestedAt: new Date().toISOString(),
+    requestComment: comment || "",
+    decidedBy: null,
+    decidedAt: null,
+    decisionComment: null,
   };
-  bookings.set(bookingId, booking);
-  return booking;
+  stageRequests.set(id, request);
+  addAudit(
+    product.id,
+    requestedBy,
+    "STAGE_CHANGE_REQUESTED",
+    `Requested move from ${request.fromStage} to ${toStage}.`
+  );
+  return request;
 }
 
-export function getBooking(bookingId) {
-  const booking = bookings.get(bookingId);
-  if (!booking) throw new BookingError("Booking not found", "NOT_FOUND");
-  if (booking.status === "BLOCKED") {
-    const key0 = seatKey(booking.trainId, booking.date, booking.classId, booking.seatNumbers[0]);
-    reapIfExpired(key0);
+export function decideStageRequest(id, approve, approver, comment) {
+  const request = stageRequests.get(id);
+  if (!request || request.status !== "PENDING") return null;
+  request.status = approve ? "APPROVED" : "REJECTED";
+  request.decidedBy = approver;
+  request.decidedAt = new Date().toISOString();
+  request.decisionComment = comment || "";
+
+  const product = products.get(request.productId);
+  if (approve && product) {
+    product.lifecycleStage = request.toStage;
+    product.updatedAt = new Date().toISOString();
   }
-  return booking;
+  addAudit(
+    request.productId,
+    approver,
+    approve ? "STAGE_CHANGE_APPROVED" : "STAGE_CHANGE_REJECTED",
+    `${approve ? "Approved" : "Rejected"} move from ${request.fromStage} to ${request.toStage}.${
+      comment ? ` Comment: ${comment}` : ""
+    }`
+  );
+  return request;
 }
 
-export function listBookingsByEmail(email) {
-  return Array.from(bookings.values())
-    .filter((b) => b.contactEmail?.toLowerCase() === email.toLowerCase())
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-}
+// ---- Audit log ----
 
-export function payForBooking(bookingId, paymentDetails) {
-  const booking = getBooking(bookingId);
-  if (booking.status === "EXPIRED") {
-    throw new BookingError("Seat hold expired before payment was completed", "EXPIRED");
-  }
-  if (booking.status === "CANCELLED") {
-    throw new BookingError("Booking was cancelled", "CANCELLED");
-  }
-  if (booking.status !== "BLOCKED") {
-    throw new BookingError("Booking is not awaiting payment", "INVALID_STATE");
-  }
-
-  // Simple mock payment gateway: card numbers ending in 0000 simulate a decline.
-  const declined = paymentDetails?.method === "CARD" && /0000$/.test(paymentDetails?.cardNumber || "");
-  if (declined) {
-    throw new BookingError("Payment was declined by the bank. Please try another method.", "PAYMENT_DECLINED");
-  }
-
-  const keys = booking.seatNumbers.map((s) => seatKey(booking.trainId, booking.date, booking.classId, s));
-  keys.forEach((key) => {
-    seatStatus.set(key, { status: "BOOKED", bookingId: booking.id });
-  });
-
-  booking.status = "CONFIRMED";
-  booking.pnr = generatePNR();
-  booking.payment = {
-    method: paymentDetails?.method || "CARD",
-    reference: `PAY-${Date.now().toString(36).toUpperCase()}`,
-    paidAt: new Date().toISOString(),
-    amount: booking.fare,
-  };
-  booking.updatedAt = new Date().toISOString();
-  return booking;
-}
-
-export function cancelBooking(bookingId) {
-  const booking = getBooking(bookingId);
-  if (booking.status === "CANCELLED" || booking.status === "EXPIRED") {
-    return booking;
-  }
-  const keys = booking.seatNumbers.map((s) => seatKey(booking.trainId, booking.date, booking.classId, s));
-  keys.forEach((key) => seatStatus.delete(key));
-  booking.status = "CANCELLED";
-  booking.updatedAt = new Date().toISOString();
-  return booking;
+export function listAuditLog(productId) {
+  return auditLog
+    .filter((a) => !productId || a.productId === productId)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }

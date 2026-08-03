@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-client",
+  "name": "plm-client",
   "version": "1.0.0",
-  "description": "Frontend for the train schedule, booking and payment app",
+  "description": "Frontend for the Product Lifecycle Management app",
   "type": "module",
   "scripts": {
     "dev": "vite",
