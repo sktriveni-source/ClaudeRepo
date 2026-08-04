@@ -29,6 +29,35 @@ raised, quotes compared, order placed with the accepted bidder) or an
 **in-house manufacturing unit** (RFQ step is skipped, job order placed
 directly). Once billing is complete, the requirement order is closed.
 
+## Approval workflow
+
+Eight of the stages — **RFQ, Order, Goods Receipt, Invoice, Inventory,
+Distribution, Delivery and Billing** — are approval-gated in both phases
+wherever they occur. Submitting one of these doesn't change the order
+immediately:
+
+1. **Submit** — filling in the form (e.g. accepting a supplier's quote,
+   recording a goods receipt, entering an invoice) creates a `PENDING`
+   approval request with a snapshot of the submitted data, and the order is
+   locked (only one approval can be in flight per order at a time).
+2. **Approve** — an approver reviews the request and decides. Approving
+   executes the underlying transition (creates the PO, records the receipt,
+   advances the stage, ...); rejecting discards it and leaves the order
+   exactly where it was, so the requester can correct and resubmit.
+
+The RFQ→Order step is deliberately split into two separate approvals
+(accepting a vendor's quote, then placing the purchase/manufacturing order
+against it), matching the two arrows in the original flow diagram.
+Sourcing/RFQ-raising, marking a manufacturing order complete, paying a
+supplier invoice, and closing the order are administrative steps and stay
+ungated.
+
+Approvals can be actioned from two places: inline on the order (a banner
+replaces the action panel while something is pending) or from the
+**Approvals** dashboard (`/approvals`), which lists every pending approval
+across all orders in one place — the pattern for "managing" the approval
+flow centrally rather than order-by-order.
+
 ## Architecture
 
 ```
@@ -41,17 +70,27 @@ client/   React + TypeScript SPA (Vite), calls the API via /api/* (proxied in de
 - `src/data/vendors.js` — seed directory of raw-material suppliers and
   manufacturing vendors.
 - `src/store/db.js` — in-memory state machine for requirement orders. Each
-  order tracks a `rawMaterial` stage and a `manufacturing` stage, and every
-  transition is validated (e.g. you can't record a goods receipt before a
-  purchase order exists) and appended to the order's `timeline`.
+  order tracks a `rawMaterial` stage and a `manufacturing` stage. Gated
+  transitions go through a generic `requestApproval` / `decideApproval` pair:
+  the requested action and its payload are held in `order.pendingApproval`
+  until approved (which runs the matching executor) or rejected (which
+  discards it). Every event — direct actions, submissions, approvals,
+  rejections and the resulting business action — is appended to
+  `order.transactions`, a full structured audit ledger (timestamp, phase,
+  stage, category, type, actor, message, amount, reference id). Decided
+  approvals accumulate in `order.approvals` for a full history.
 - `src/routes/vendors.js` — `GET /api/vendors`, `POST /api/vendors`.
-- `src/routes/orders.js` — `GET/POST /api/orders`, `GET /api/orders/:id`, plus
-  one action endpoint per stage transition, e.g.
-  `POST /api/orders/:id/raw-material/sourcing`,
-  `POST /api/orders/:id/raw-material/rfq/:rfqId/accept`,
-  `POST /api/orders/:id/manufacturing/mode`,
-  `POST /api/orders/:id/manufacturing/distribution`,
-  `POST /api/orders/:id/close`.
+- `src/routes/approvals.js` — `GET /api/approvals?status=PENDING`, a global
+  view across every order's approvals.
+- `src/routes/orders.js` — `GET/POST /api/orders`, `GET /api/orders/:id`, an
+  order-scoped `GET /api/orders/:id/approvals` and
+  `POST /api/orders/:id/approvals/:approvalId/decide`, plus one action
+  endpoint per stage transition — ungated ones apply immediately (e.g.
+  `POST /api/orders/:id/raw-material/sourcing`), gated ones submit for
+  approval (e.g. `POST /api/orders/:id/raw-material/rfq/:rfqId/accept`,
+  `POST /api/orders/:id/raw-material/order/place`,
+  `POST /api/orders/:id/manufacturing/inventory`,
+  `POST /api/orders/:id/manufacturing/billing`).
 
 ### Frontend (`client/`)
 
@@ -60,12 +99,14 @@ React Router pages:
 - **Dashboard** (`/`) — every requirement order with its current phase/stage.
 - **New Requirement** (`/new`) — capture customer, product, quantity, specs
   and the raw materials needed.
-- **Order Detail** (`/orders/:id`) — two stage steppers (raw materials,
-  manufacturing) plus an action panel for whatever stage the order is
-  currently in: select suppliers, raise/quote/accept RFQs, record goods
-  receipts and invoices, choose external vs. in-house manufacturing, dispatch
-  shipments, record delivery/billing, and close the order. A timeline at the
-  bottom logs every transition.
+- **Order Detail** (`/orders/:id`) — an "Acting as" field attributes your
+  actions; two stage steppers (raw materials, manufacturing); either the
+  action panel for the current stage or, while something is pending, an
+  approval banner with approve/reject controls; an **Approval History**
+  table and a full **Transaction Ledger** table underneath.
+- **Approvals** (`/approvals`) — every pending approval across all orders in
+  one place, with inline approve/reject. The nav bar shows a live pending
+  count badge.
 - **Suppliers & Vendors** (`/vendors`) — directory of raw-material suppliers
   and manufacturing vendors used when raising RFQs.
 

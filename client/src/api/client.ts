@@ -1,4 +1,4 @@
-import type { RequirementOrder, Vendor, VendorType } from "../types";
+import type { ApprovalWithOrder, RequirementOrder, Vendor, VendorType } from "../types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -32,52 +32,77 @@ export const api = {
     materials: { name: string; quantity: number; unit: string }[];
   }) => post<RequirementOrder>("/orders", data),
 
+  // Approvals
+  listApprovals: (status?: string) =>
+    request<ApprovalWithOrder[]>(`/approvals${status ? `?status=${status}` : ""}`),
+  decideApproval: (
+    orderId: string,
+    approvalId: string,
+    data: { decision: "APPROVED" | "REJECTED"; decidedBy: string; comments?: string }
+  ) => post<RequirementOrder>(`/orders/${orderId}/approvals/${approvalId}/decide`, data),
+
   // Raw material procurement
-  placeRawMaterialOrder: (id: string) => post<RequirementOrder>(`/orders/${id}/raw-material/place`),
-  sourceRawMaterialVendors: (id: string, vendorIds: string[]) =>
-    post<RequirementOrder>(`/orders/${id}/raw-material/sourcing`, { vendorIds }),
+  placeRawMaterialOrder: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/place`, { actor }),
+  sourceRawMaterialVendors: (id: string, vendorIds: string[], actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/sourcing`, { vendorIds, actor }),
   quoteRawMaterialRfq: (id: string, rfqId: string, quotedPrice: number, leadTimeDays: number) =>
     post<RequirementOrder>(`/orders/${id}/raw-material/rfq/${rfqId}/quote`, {
       quotedPrice,
       leadTimeDays,
     }),
-  acceptRawMaterialRfq: (id: string, rfqId: string) =>
-    post<RequirementOrder>(`/orders/${id}/raw-material/rfq/${rfqId}/accept`),
-  recordRawMaterialGoodsReceipt: (
+  submitAcceptRawMaterialRfq: (id: string, rfqId: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/rfq/${rfqId}/accept`, { requestedBy }),
+  submitPlaceRawMaterialOrder: (id: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/order/place`, { requestedBy }),
+  submitRawMaterialGoodsReceipt: (
     id: string,
-    data: { receivedQty: number; condition: string; notes?: string }
+    data: { receivedQty: number; condition: string; notes?: string; requestedBy: string }
   ) => post<RequirementOrder>(`/orders/${id}/raw-material/goods-receipt`, data),
-  recordRawMaterialInvoice: (id: string, data: { invoiceNumber: string; amount: number }) =>
-    post<RequirementOrder>(`/orders/${id}/raw-material/invoice`, data),
-  payRawMaterialInvoice: (id: string) =>
-    post<RequirementOrder>(`/orders/${id}/raw-material/invoice/pay`),
+  submitRawMaterialInvoice: (
+    id: string,
+    data: { invoiceNumber: string; amount: number; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/raw-material/invoice`, data),
+  payRawMaterialInvoice: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/invoice/pay`, { actor }),
 
   // Manufacturing, inventory & distribution
-  placeManufacturingOrder: (id: string) => post<RequirementOrder>(`/orders/${id}/manufacturing/place`),
+  placeManufacturingOrder: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/place`, { actor }),
   selectManufacturingMode: (
     id: string,
-    data: { mode: "EXTERNAL" | "INHOUSE"; vendorIds?: string[]; unitName?: string }
-  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/mode`, data),
+    data: { mode: "EXTERNAL" | "INHOUSE"; vendorIds?: string[]; unitName?: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/mode`, { ...data, actor: data.requestedBy }),
   quoteManufacturingRfq: (id: string, rfqId: string, quotedPrice: number, leadTimeDays: number) =>
     post<RequirementOrder>(`/orders/${id}/manufacturing/rfq/${rfqId}/quote`, {
       quotedPrice,
       leadTimeDays,
     }),
-  acceptManufacturingRfq: (id: string, rfqId: string) =>
-    post<RequirementOrder>(`/orders/${id}/manufacturing/rfq/${rfqId}/accept`),
-  completeManufacturingOrder: (id: string) =>
-    post<RequirementOrder>(`/orders/${id}/manufacturing/order/complete`),
-  recordInventory: (id: string, data: { producedQty: number; warehouseLocation: string }) =>
-    post<RequirementOrder>(`/orders/${id}/manufacturing/inventory`, data),
-  recordDistribution: (id: string, data: { carrier: string; shipmentId?: string }) =>
+  submitAcceptManufacturingRfq: (id: string, rfqId: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/rfq/${rfqId}/accept`, { requestedBy }),
+  submitPlaceManufacturingOrder: (id: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/order/place`, { requestedBy }),
+  completeManufacturingOrder: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/order/complete`, { actor }),
+  submitInventory: (
+    id: string,
+    data: { producedQty: number; warehouseLocation: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/inventory`, data),
+  submitDistribution: (id: string, data: { carrier: string; shipmentId?: string; requestedBy: string }) =>
     post<RequirementOrder>(`/orders/${id}/manufacturing/distribution`, data),
-  recordDelivery: (id: string, data: { deliveryAddress: string; recipient: string }) =>
-    post<RequirementOrder>(`/orders/${id}/manufacturing/delivery`, data),
-  recordCustomerGoodsReceipt: (id: string, data: { receivedQty: number; confirmedBy: string }) =>
-    post<RequirementOrder>(`/orders/${id}/manufacturing/goods-receipt`, data),
-  recordCustomerInvoice: (id: string, data: { invoiceNumber: string; amount: number }) =>
-    post<RequirementOrder>(`/orders/${id}/manufacturing/invoice`, data),
-  recordBilling: (id: string, data: { paymentStatus: string }) =>
+  submitDelivery: (
+    id: string,
+    data: { deliveryAddress: string; recipient: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/delivery`, data),
+  submitManufacturingGoodsReceipt: (
+    id: string,
+    data: { receivedQty: number; confirmedBy: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/goods-receipt`, data),
+  submitManufacturingInvoice: (
+    id: string,
+    data: { invoiceNumber: string; amount: number; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/invoice`, data),
+  submitBilling: (id: string, data: { paymentStatus: string; requestedBy: string }) =>
     post<RequirementOrder>(`/orders/${id}/manufacturing/billing`, data),
-  closeOrder: (id: string) => post<RequirementOrder>(`/orders/${id}/close`),
+  closeOrder: (id: string, actor: string) => post<RequirementOrder>(`/orders/${id}/close`, { actor }),
 };

@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { vendorsRouter } from "./routes/vendors.js";
 import { ordersRouter } from "./routes/orders.js";
+import { approvalsRouter } from "./routes/approvals.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -12,6 +13,7 @@ app.use(express.json());
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.use("/api/vendors", vendorsRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/approvals", approvalsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

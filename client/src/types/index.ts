@@ -148,11 +148,53 @@ export interface Manufacturing {
   billing: BillingRecord | null;
 }
 
-export interface TimelineEvent {
+export type ApprovalCategory =
+  | "RFQ"
+  | "ORDER"
+  | "GOODS_RECEIPT"
+  | "INVOICE"
+  | "INVENTORY"
+  | "DISTRIBUTION"
+  | "DELIVERY"
+  | "BILLING";
+
+export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface Approval {
+  id: string;
+  category: ApprovalCategory;
+  phase: string;
+  stage: string;
+  action: string;
+  payload: Record<string, unknown>;
+  summary: string;
+  status: ApprovalStatus;
+  requestedBy: string;
+  requestedAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  comments: string | null;
+}
+
+export interface ApprovalWithOrder extends Approval {
+  orderId: string;
+  customerName: string;
+  productName: string;
+}
+
+export type TransactionType = "CREATED" | "ACTION" | "SUBMITTED" | "APPROVED" | "REJECTED" | "CLOSED";
+
+export interface Transaction {
+  id: string;
   ts: string;
   phase: string;
   stage: string;
+  category: string;
+  type: TransactionType;
+  actor: string;
   message: string;
+  amount: number | null;
+  refId: string | null;
 }
 
 export type OrderPhase = "RAW_MATERIALS" | "MANUFACTURING" | "CLOSED";
@@ -167,7 +209,9 @@ export interface RequirementOrder {
   createdAt: string;
   phase: OrderPhase;
   closedAt: string | null;
+  pendingApproval: Approval | null;
+  approvals: Approval[];
   rawMaterial: RawMaterialProcurement;
   manufacturing: Manufacturing;
-  timeline: TimelineEvent[];
+  transactions: Transaction[];
 }

@@ -23,6 +23,10 @@ function loadOrder(req) {
   return order;
 }
 
+function actorOf(req) {
+  return (req.body && req.body.actor) || "Unknown";
+}
+
 ordersRouter.get(
   "/",
   handle((req, res) => {
@@ -59,19 +63,36 @@ ordersRouter.get(
   })
 );
 
+// ---- Approvals (order-scoped) ----
+
+ordersRouter.get(
+  "/:id/approvals",
+  handle((req, res) => {
+    res.json(loadOrder(req).approvals);
+  })
+);
+
+ordersRouter.post(
+  "/:id/approvals/:approvalId/decide",
+  handle((req, res) => {
+    const { decision, decidedBy, comments } = req.body || {};
+    res.json(db.decideApproval(loadOrder(req), req.params.approvalId, { decision, decidedBy, comments }));
+  })
+);
+
 // ---- Raw material procurement ----
 
 ordersRouter.post(
   "/:id/raw-material/place",
   handle((req, res) => {
-    res.json(db.placeRawMaterialOrder(loadOrder(req)));
+    res.json(db.placeRawMaterialOrder(loadOrder(req), actorOf(req)));
   })
 );
 
 ordersRouter.post(
   "/:id/raw-material/sourcing",
   handle((req, res) => {
-    res.json(db.sourceRawMaterialVendors(loadOrder(req), req.body?.vendorIds));
+    res.json(db.sourceRawMaterialVendors(loadOrder(req), req.body?.vendorIds, actorOf(req)));
   })
 );
 
@@ -80,7 +101,7 @@ ordersRouter.post(
   handle((req, res) => {
     const { quotedPrice, leadTimeDays } = req.body || {};
     res.json(
-      db.quoteRawMaterialRfq(loadOrder(req), req.params.rfqId, quotedPrice, leadTimeDays)
+      db.quoteRawMaterialRfq(loadOrder(req), req.params.rfqId, quotedPrice, leadTimeDays, actorOf(req))
     );
   })
 );
@@ -88,28 +109,39 @@ ordersRouter.post(
 ordersRouter.post(
   "/:id/raw-material/rfq/:rfqId/accept",
   handle((req, res) => {
-    res.json(db.acceptRawMaterialRfq(loadOrder(req), req.params.rfqId));
+    const { requestedBy } = req.body || {};
+    res.json(db.submitAcceptRawMaterialRfq(loadOrder(req), req.params.rfqId, requestedBy));
+  })
+);
+
+ordersRouter.post(
+  "/:id/raw-material/order/place",
+  handle((req, res) => {
+    const { requestedBy } = req.body || {};
+    res.json(db.submitPlaceRawMaterialOrder(loadOrder(req), requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/raw-material/goods-receipt",
   handle((req, res) => {
-    res.json(db.recordRawMaterialGoodsReceipt(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitRawMaterialGoodsReceipt(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/raw-material/invoice",
   handle((req, res) => {
-    res.json(db.recordRawMaterialInvoice(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitRawMaterialInvoice(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/raw-material/invoice/pay",
   handle((req, res) => {
-    res.json(db.payRawMaterialInvoice(loadOrder(req)));
+    res.json(db.payRawMaterialInvoice(loadOrder(req), actorOf(req)));
   })
 );
 
@@ -118,14 +150,15 @@ ordersRouter.post(
 ordersRouter.post(
   "/:id/manufacturing/place",
   handle((req, res) => {
-    res.json(db.placeManufacturingOrder(loadOrder(req)));
+    res.json(db.placeManufacturingOrder(loadOrder(req), actorOf(req)));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/mode",
   handle((req, res) => {
-    res.json(db.selectManufacturingMode(loadOrder(req), req.body || {}));
+    const { actor, ...data } = req.body || {};
+    res.json(db.selectManufacturingMode(loadOrder(req), data, actor || data.requestedBy));
   })
 );
 
@@ -134,7 +167,7 @@ ordersRouter.post(
   handle((req, res) => {
     const { quotedPrice, leadTimeDays } = req.body || {};
     res.json(
-      db.quoteManufacturingRfq(loadOrder(req), req.params.rfqId, quotedPrice, leadTimeDays)
+      db.quoteManufacturingRfq(loadOrder(req), req.params.rfqId, quotedPrice, leadTimeDays, actorOf(req))
     );
   })
 );
@@ -142,62 +175,77 @@ ordersRouter.post(
 ordersRouter.post(
   "/:id/manufacturing/rfq/:rfqId/accept",
   handle((req, res) => {
-    res.json(db.acceptManufacturingRfq(loadOrder(req), req.params.rfqId));
+    const { requestedBy } = req.body || {};
+    res.json(db.submitAcceptManufacturingRfq(loadOrder(req), req.params.rfqId, requestedBy));
+  })
+);
+
+ordersRouter.post(
+  "/:id/manufacturing/order/place",
+  handle((req, res) => {
+    const { requestedBy } = req.body || {};
+    res.json(db.submitPlaceManufacturingOrder(loadOrder(req), requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/order/complete",
   handle((req, res) => {
-    res.json(db.completeManufacturingOrder(loadOrder(req)));
+    res.json(db.completeManufacturingOrder(loadOrder(req), actorOf(req)));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/inventory",
   handle((req, res) => {
-    res.json(db.recordInventory(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitInventory(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/distribution",
   handle((req, res) => {
-    res.json(db.recordDistribution(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitDistribution(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/delivery",
   handle((req, res) => {
-    res.json(db.recordDelivery(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitDelivery(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/goods-receipt",
   handle((req, res) => {
-    res.json(db.recordCustomerGoodsReceipt(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitManufacturingGoodsReceipt(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/invoice",
   handle((req, res) => {
-    res.json(db.recordCustomerInvoice(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitManufacturingInvoice(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/manufacturing/billing",
   handle((req, res) => {
-    res.json(db.recordBilling(loadOrder(req), req.body || {}));
+    const { requestedBy, ...data } = req.body || {};
+    res.json(db.submitBilling(loadOrder(req), data, requestedBy));
   })
 );
 
 ordersRouter.post(
   "/:id/close",
   handle((req, res) => {
-    res.json(db.closeRequirementOrder(loadOrder(req)));
+    res.json(db.closeRequirementOrder(loadOrder(req), actorOf(req)));
   })
 );

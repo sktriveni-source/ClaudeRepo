@@ -5,7 +5,10 @@ import type { RequirementOrder, Vendor } from "../types";
 import { StageStepper } from "../components/StageStepper";
 import { StatusBadge } from "../components/StatusBadge";
 import { RfqPanel } from "../components/RfqPanel";
+import { ApprovalBanner } from "../components/ApprovalBanner";
 import { RAW_MATERIAL_STAGES, MANUFACTURING_STAGES } from "../constants";
+
+const ACTOR_STORAGE_KEY = "supplyflow.actor";
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +16,11 @@ export function OrderDetailPage() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [actor, setActor] = useState(() => localStorage.getItem(ACTOR_STORAGE_KEY) || "");
+
+  useEffect(() => {
+    localStorage.setItem(ACTOR_STORAGE_KEY, actor);
+  }, [actor]);
 
   const refresh = useCallback(() => {
     if (!id) return;
@@ -59,6 +67,21 @@ export function OrderDetailPage() {
         <StatusBadge label={order.phase} />
       </div>
 
+      <div className="card actor-bar">
+        <label>
+          Acting as
+          <input
+            placeholder="Your name / role, e.g. Raj (Procurement)"
+            value={actor}
+            onChange={(e) => setActor(e.target.value)}
+          />
+        </label>
+        <p className="muted">
+          Used to attribute the actions and approval decisions you make below — every transaction on
+          this order records who did what and when.
+        </p>
+      </div>
+
       {error && <p className="error">{error}</p>}
 
       <div className="steppers">
@@ -76,33 +99,30 @@ export function OrderDetailPage() {
         />
       </div>
 
-      {order.phase === "RAW_MATERIALS" && (
-        <RawMaterialPanel order={order} vendors={vendors} busy={busy} run={run} />
-      )}
-      {order.phase === "MANUFACTURING" && (
-        <ManufacturingPanel order={order} vendors={vendors} busy={busy} run={run} />
-      )}
-      {order.phase === "CLOSED" && (
-        <div className="card">
-          <h2>Requirement order closed</h2>
-          <p>
-            Closed on {order.closedAt && new Date(order.closedAt).toLocaleString()}. This
-            requirement has been fully delivered, invoiced and billed.
-          </p>
-        </div>
+      {order.pendingApproval ? (
+        <ApprovalBanner order={order} busy={busy} run={run} />
+      ) : (
+        <>
+          {order.phase === "RAW_MATERIALS" && (
+            <RawMaterialPanel order={order} vendors={vendors} busy={busy} run={run} actor={actor} />
+          )}
+          {order.phase === "MANUFACTURING" && (
+            <ManufacturingPanel order={order} vendors={vendors} busy={busy} run={run} actor={actor} />
+          )}
+          {order.phase === "CLOSED" && (
+            <div className="card">
+              <h2>Requirement order closed</h2>
+              <p>
+                Closed on {order.closedAt && new Date(order.closedAt).toLocaleString()}. This
+                requirement has been fully delivered, invoiced and billed.
+              </p>
+            </div>
+          )}
+        </>
       )}
 
-      <div className="card">
-        <h2>Timeline</h2>
-        <ul className="timeline">
-          {order.timeline.map((event, i) => (
-            <li key={i}>
-              <span className="timeline__ts">{new Date(event.ts).toLocaleString()}</span>
-              <span className="timeline__msg">{event.message}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ApprovalsHistory order={order} />
+      <TransactionsLedger order={order} />
     </div>
   );
 }
@@ -112,9 +132,15 @@ interface PanelProps {
   vendors: Vendor[];
   busy: boolean;
   run: <T>(action: () => Promise<T>) => Promise<T>;
+  actor: string;
 }
 
-function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
+function ActorHint({ actor }: { actor: string }) {
+  if (actor) return null;
+  return <p className="error">Enter your name in "Acting as" above before taking an action.</p>;
+}
+
+function RawMaterialPanel({ order, vendors, busy, run, actor }: PanelProps) {
   const rm = order.rawMaterial;
   const rawVendors = vendors.filter((v) => v.type === "RAW_MATERIAL" || v.type === "BOTH");
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
@@ -124,6 +150,9 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [invoiceAmount, setInvoiceAmount] = useState("");
 
+  const canAct = busy || !actor;
+  const acceptedRfq = rm.rfqs.find((r) => r.status === "ACCEPTED");
+
   function toggleVendor(id: string) {
     setSelectedVendors((sel) => (sel.includes(id) ? sel.filter((v) => v !== id) : [...sel, id]));
   }
@@ -131,6 +160,7 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
   return (
     <div className="card">
       <h2>Raw Material Procurement — {rm.stage.replace(/_/g, " ")}</h2>
+      <ActorHint actor={actor} />
 
       {rm.materials.length > 0 && (
         <div className="materials-list">
@@ -146,7 +176,7 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
       )}
 
       {rm.stage === "PLACE_ORDER" && (
-        <button className="primary" disabled={busy} onClick={() => run(() => api.placeRawMaterialOrder(order.id))}>
+        <button className="primary" disabled={canAct} onClick={() => run(() => api.placeRawMaterialOrder(order.id, actor))}>
           Place order for raw materials
         </button>
       )}
@@ -168,25 +198,41 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || selectedVendors.length === 0}
-            onClick={() => run(() => api.sourceRawMaterialVendors(order.id, selectedVendors))}
+            disabled={canAct || selectedVendors.length === 0}
+            onClick={() => run(() => api.sourceRawMaterialVendors(order.id, selectedVendors, actor))}
           >
             Raise RFQ with selected suppliers
           </button>
         </div>
       )}
 
-      {rm.stage === "RFQ" && (
+      {rm.stage === "RFQ" && !rm.purchaseOrder && !acceptedRfq && (
         <RfqPanel
           rfqs={rm.rfqs}
-          disabled={busy}
+          disabled={canAct}
           onQuote={async (rfqId, price, lead) => {
             await run(() => api.quoteRawMaterialRfq(order.id, rfqId, price, lead));
           }}
           onAccept={async (rfqId) => {
-            await run(() => api.acceptRawMaterialRfq(order.id, rfqId));
+            await run(() => api.submitAcceptRawMaterialRfq(order.id, rfqId, actor));
           }}
         />
+      )}
+
+      {rm.stage === "RFQ" && !rm.purchaseOrder && acceptedRfq && (
+        <div>
+          <p>
+            <strong>{acceptedRfq.vendorName}</strong>'s quote of ${acceptedRfq.quotedPrice} was approved.
+            Submit the purchase order to place it with the supplier.
+          </p>
+          <button
+            className="primary"
+            disabled={canAct}
+            onClick={() => run(() => api.submitPlaceRawMaterialOrder(order.id, actor))}
+          >
+            Submit purchase order for approval
+          </button>
+        </div>
       )}
 
       {rm.stage === "ORDER" && rm.purchaseOrder && (
@@ -216,18 +262,19 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !receiptQty}
+            disabled={canAct || !receiptQty}
             onClick={() =>
               run(() =>
-                api.recordRawMaterialGoodsReceipt(order.id, {
+                api.submitRawMaterialGoodsReceipt(order.id, {
                   receivedQty: Number(receiptQty),
                   condition: receiptCondition,
                   notes: receiptNotes,
+                  requestedBy: actor,
                 })
               )
             }
           >
-            Record goods receipt
+            Submit goods receipt for approval
           </button>
         </div>
       )}
@@ -253,17 +300,18 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !invoiceNumber || !invoiceAmount}
+            disabled={canAct || !invoiceNumber || !invoiceAmount}
             onClick={() =>
               run(() =>
-                api.recordRawMaterialInvoice(order.id, {
+                api.submitRawMaterialInvoice(order.id, {
                   invoiceNumber,
                   amount: Number(invoiceAmount),
+                  requestedBy: actor,
                 })
               )
             }
           >
-            Record supplier invoice
+            Submit supplier invoice for approval
           </button>
         </div>
       )}
@@ -273,7 +321,11 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
           <p>
             Invoice {rm.invoice.invoiceNumber} for ${rm.invoice.amount} — <StatusBadge label={rm.invoice.status} />
           </p>
-          <button className="primary" disabled={busy} onClick={() => run(() => api.payRawMaterialInvoice(order.id))}>
+          <button
+            className="primary"
+            disabled={canAct}
+            onClick={() => run(() => api.payRawMaterialInvoice(order.id, actor))}
+          >
             Mark invoice paid & proceed to manufacturing
           </button>
         </div>
@@ -282,7 +334,7 @@ function RawMaterialPanel({ order, vendors, busy, run }: PanelProps) {
   );
 }
 
-function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
+function ManufacturingPanel({ order, vendors, busy, run, actor }: PanelProps) {
   const mfg = order.manufacturing;
   const mfgVendors = vendors.filter((v) => v.type === "MANUFACTURING" || v.type === "BOTH");
   const [mode, setMode] = useState<"EXTERNAL" | "INHOUSE">("EXTERNAL");
@@ -300,6 +352,9 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
   const [invoiceAmount, setInvoiceAmount] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("PAID");
 
+  const canAct = busy || !actor;
+  const acceptedRfq = mfg.rfqs.find((r) => r.status === "ACCEPTED");
+
   function toggleVendor(id: string) {
     setSelectedVendors((sel) => (sel.includes(id) ? sel.filter((v) => v !== id) : [...sel, id]));
   }
@@ -307,9 +362,14 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
   return (
     <div className="card">
       <h2>Manufacturing & Distribution — {mfg.stage?.replace(/_/g, " ")}</h2>
+      <ActorHint actor={actor} />
 
       {mfg.stage === "PLACE_ORDER" && (
-        <button className="primary" disabled={busy} onClick={() => run(() => api.placeManufacturingOrder(order.id))}>
+        <button
+          className="primary"
+          disabled={canAct}
+          onClick={() => run(() => api.placeManufacturingOrder(order.id, actor))}
+        >
           Place order for manufacturing
         </button>
       )}
@@ -352,10 +412,14 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
               </div>
               <button
                 className="primary"
-                disabled={busy || selectedVendors.length === 0}
+                disabled={canAct || selectedVendors.length === 0}
                 onClick={() =>
                   run(() =>
-                    api.selectManufacturingMode(order.id, { mode: "EXTERNAL", vendorIds: selectedVendors })
+                    api.selectManufacturingMode(order.id, {
+                      mode: "EXTERNAL",
+                      vendorIds: selectedVendors,
+                      requestedBy: actor,
+                    })
                   )
                 }
               >
@@ -366,6 +430,10 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
 
           {mode === "INHOUSE" && (
             <div>
+              <p className="muted">
+                In-house manufacturing skips the RFQ round, but placing the job order still needs
+                approval.
+              </p>
               <input
                 placeholder="In-house unit name"
                 value={unitName}
@@ -373,29 +441,47 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
               />
               <button
                 className="primary"
-                disabled={busy || !unitName}
+                disabled={canAct || !unitName}
                 onClick={() =>
-                  run(() => api.selectManufacturingMode(order.id, { mode: "INHOUSE", unitName }))
+                  run(() =>
+                    api.selectManufacturingMode(order.id, { mode: "INHOUSE", unitName, requestedBy: actor })
+                  )
                 }
               >
-                Assign in-house unit & place order
+                Submit in-house job order for approval
               </button>
             </div>
           )}
         </div>
       )}
 
-      {mfg.stage === "RFQ" && (
+      {mfg.stage === "RFQ" && !mfg.order && !acceptedRfq && (
         <RfqPanel
           rfqs={mfg.rfqs}
-          disabled={busy}
+          disabled={canAct}
           onQuote={async (rfqId, price, lead) => {
             await run(() => api.quoteManufacturingRfq(order.id, rfqId, price, lead));
           }}
           onAccept={async (rfqId) => {
-            await run(() => api.acceptManufacturingRfq(order.id, rfqId));
+            await run(() => api.submitAcceptManufacturingRfq(order.id, rfqId, actor));
           }}
         />
+      )}
+
+      {mfg.stage === "RFQ" && !mfg.order && acceptedRfq && (
+        <div>
+          <p>
+            <strong>{acceptedRfq.vendorName}</strong>'s quote of ${acceptedRfq.quotedPrice} was approved.
+            Submit the manufacturing order to place it with the vendor.
+          </p>
+          <button
+            className="primary"
+            disabled={canAct}
+            onClick={() => run(() => api.submitPlaceManufacturingOrder(order.id, actor))}
+          >
+            Submit manufacturing order for approval
+          </button>
+        </div>
       )}
 
       {mfg.stage === "ORDER" && mfg.order && (
@@ -403,7 +489,11 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           <p>
             Manufacturing order placed with <strong>{mfg.order.vendorName}</strong>.
           </p>
-          <button className="primary" disabled={busy} onClick={() => run(() => api.completeManufacturingOrder(order.id))}>
+          <button
+            className="primary"
+            disabled={canAct}
+            onClick={() => run(() => api.completeManufacturingOrder(order.id, actor))}
+          >
             Mark manufacturing order complete
           </button>
         </div>
@@ -427,17 +517,18 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !producedQty || !warehouseLocation}
+            disabled={canAct || !producedQty || !warehouseLocation}
             onClick={() =>
               run(() =>
-                api.recordInventory(order.id, {
+                api.submitInventory(order.id, {
                   producedQty: Number(producedQty),
                   warehouseLocation,
+                  requestedBy: actor,
                 })
               )
             }
           >
-            Record inventory
+            Submit inventory for approval
           </button>
         </div>
       )}
@@ -458,10 +549,12 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !carrier}
-            onClick={() => run(() => api.recordDistribution(order.id, { carrier, shipmentId }))}
+            disabled={canAct || !carrier}
+            onClick={() =>
+              run(() => api.submitDistribution(order.id, { carrier, shipmentId, requestedBy: actor }))
+            }
           >
-            Dispatch shipment to move product to customer
+            Submit dispatch for approval
           </button>
         </div>
       )}
@@ -486,10 +579,14 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !deliveryAddress || !recipient}
-            onClick={() => run(() => api.recordDelivery(order.id, { deliveryAddress, recipient }))}
+            disabled={canAct || !deliveryAddress || !recipient}
+            onClick={() =>
+              run(() =>
+                api.submitDelivery(order.id, { deliveryAddress, recipient, requestedBy: actor })
+              )
+            }
           >
-            Mark delivered
+            Submit delivery for approval
           </button>
         </div>
       )}
@@ -515,17 +612,18 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !receivedQty || !confirmedBy}
+            disabled={canAct || !receivedQty || !confirmedBy}
             onClick={() =>
               run(() =>
-                api.recordCustomerGoodsReceipt(order.id, {
+                api.submitManufacturingGoodsReceipt(order.id, {
                   receivedQty: Number(receivedQty),
                   confirmedBy,
+                  requestedBy: actor,
                 })
               )
             }
           >
-            Confirm customer goods receipt
+            Submit customer goods receipt for approval
           </button>
         </div>
       )}
@@ -551,17 +649,18 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           </div>
           <button
             className="primary"
-            disabled={busy || !invoiceNumber || !invoiceAmount}
+            disabled={canAct || !invoiceNumber || !invoiceAmount}
             onClick={() =>
               run(() =>
-                api.recordCustomerInvoice(order.id, {
+                api.submitManufacturingInvoice(order.id, {
                   invoiceNumber,
                   amount: Number(invoiceAmount),
+                  requestedBy: actor,
                 })
               )
             }
           >
-            Issue customer invoice
+            Submit customer invoice for approval
           </button>
         </div>
       )}
@@ -579,10 +678,12 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
           </select>
           <button
             className="primary"
-            disabled={busy}
-            onClick={() => run(() => api.recordBilling(order.id, { paymentStatus }))}
+            disabled={canAct}
+            onClick={() =>
+              run(() => api.submitBilling(order.id, { paymentStatus, requestedBy: actor }))
+            }
           >
-            Record billing
+            Submit billing for approval
           </button>
         </div>
       )}
@@ -593,11 +694,90 @@ function ManufacturingPanel({ order, vendors, busy, run }: PanelProps) {
             Billed on {new Date(mfg.billing.billedAt).toLocaleString()} — payment{" "}
             {mfg.billing.paymentStatus}.
           </p>
-          <button className="primary" disabled={busy} onClick={() => run(() => api.closeOrder(order.id))}>
+          <button className="primary" disabled={canAct} onClick={() => run(() => api.closeOrder(order.id, actor))}>
             Close requirement order
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function ApprovalsHistory({ order }: { order: RequirementOrder }) {
+  if (order.approvals.length === 0) return null;
+  return (
+    <div className="card">
+      <h2>Approval History</h2>
+      <table className="orders-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Request</th>
+            <th>Requested by</th>
+            <th>Status</th>
+            <th>Decided by</th>
+            <th>Comments</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...order.approvals].reverse().map((a) => (
+            <tr key={a.id}>
+              <td>
+                <StatusBadge label={a.category} />
+              </td>
+              <td>{a.summary}</td>
+              <td>
+                {a.requestedBy}
+                <div className="muted">{new Date(a.requestedAt).toLocaleString()}</div>
+              </td>
+              <td>
+                <StatusBadge label={a.status} />
+              </td>
+              <td>
+                {a.decidedBy || "—"}
+                {a.decidedAt && <div className="muted">{new Date(a.decidedAt).toLocaleString()}</div>}
+              </td>
+              <td>{a.comments || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TransactionsLedger({ order }: { order: RequirementOrder }) {
+  return (
+    <div className="card">
+      <h2>Transaction Ledger</h2>
+      <table className="orders-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Category</th>
+            <th>Type</th>
+            <th>Actor</th>
+            <th>Details</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[...order.transactions].reverse().map((t) => (
+            <tr key={t.id}>
+              <td className="nowrap">{new Date(t.ts).toLocaleString()}</td>
+              <td>
+                <StatusBadge label={t.category} />
+              </td>
+              <td>
+                <StatusBadge label={t.type} />
+              </td>
+              <td>{t.actor}</td>
+              <td>{t.message}</td>
+              <td>{t.amount != null ? `$${t.amount}` : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

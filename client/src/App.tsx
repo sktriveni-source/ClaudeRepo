@@ -4,6 +4,7 @@ import { OrdersListPage } from "./pages/OrdersListPage";
 import { NewRequirementPage } from "./pages/NewRequirementPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
 import { VendorsPage } from "./pages/VendorsPage";
+import { ApprovalsPage } from "./pages/ApprovalsPage";
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/new" element={<NewRequirementPage />} />
           <Route path="/orders/:id" element={<OrderDetailPage />} />
           <Route path="/vendors" element={<VendorsPage />} />
+          <Route path="/approvals" element={<ApprovalsPage />} />
         </Routes>
       </main>
     </div>

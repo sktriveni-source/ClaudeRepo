@@ -55,6 +55,16 @@ button.ghost {
   border: 1px dashed var(--border);
 }
 
+button.danger {
+  background: #fff;
+  border-color: var(--red);
+  color: var(--red);
+}
+
+button.danger:hover {
+  background: #fdecea;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -125,6 +135,17 @@ label {
 .app-header__nav a.active,
 .app-header__nav a:hover {
   color: #fff;
+}
+
+.nav-badge {
+  display: inline-block;
+  margin-left: 6px;
+  background: var(--amber);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 7px;
 }
 
 main {
@@ -413,4 +434,78 @@ legend {
 .timeline__ts {
   color: var(--text-muted);
   min-width: 170px;
+}
+
+.actor-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actor-bar label {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.actor-bar input {
+  flex: 1;
+  max-width: 340px;
+}
+
+.approval-banner {
+  border-left: 4px solid var(--amber);
+  background: #fffaf0;
+}
+
+.approval-banner__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.approval-banner__status {
+  font-weight: 600;
+  color: var(--amber);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.approval-banner__summary {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+
+.approval-banner__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.approvals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.approval-card {
+  border-left: 4px solid var(--amber);
+  margin-bottom: 0;
+}
+
+.approval-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-weight: 600;
 }

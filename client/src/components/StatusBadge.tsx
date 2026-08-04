@@ -11,6 +11,11 @@ const TONES: Record<string, string> = {
   ISSUED: "tone-amber",
   PLACED: "tone-blue",
   COMPLETE: "tone-green",
+  APPROVED: "tone-green",
+  SUBMITTED: "tone-blue",
+  ACTION: "tone-gray",
+  CREATED: "tone-gray",
+  GENERAL: "tone-gray",
 };
 
 export function StatusBadge({ label }: { label: string }) {

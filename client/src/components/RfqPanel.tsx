@@ -91,7 +91,7 @@ export function RfqPanel({ rfqs, onQuote, onAccept, disabled }: RfqPanelProps) {
               )}
               {rfq.status === "QUOTED" && !disabled && (
                 <button className="primary" disabled={busyId === rfq.id} onClick={() => submitAccept(rfq)}>
-                  Accept & place order
+                  Submit for approval
                 </button>
               )}
             </td>
