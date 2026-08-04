@@ -1,85 +1,108 @@
-import type { Booking, City, Passenger, SearchResult, SeatMapResponse, Train } from "../types";
-
-const BASE = "/api";
-
-class ApiRequestError extends Error {
-  code?: string;
-  status: number;
-  constructor(message: string, status: number, code?: string) {
-    super(message);
-    this.status = status;
-    this.code = code;
-  }
-}
+import type { ApprovalWithOrder, RequirementOrder, Vendor, VendorType } from "../types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+  const res = await fetch(`/api${path}`, {
     ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
-  const body = await res.json().catch(() => ({}));
+  const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new ApiRequestError(body.error || "Request failed", res.status, body.code);
+    throw new Error((body && body.error) || `Request failed with status ${res.status}`);
   }
   return body as T;
 }
 
-export { ApiRequestError };
+const post = <T>(path: string, data?: unknown) =>
+  request<T>(path, { method: "POST", body: data ? JSON.stringify(data) : undefined });
 
-export function getCities(): Promise<City[]> {
-  return request("/cities");
-}
+export const api = {
+  listVendors: (type?: VendorType) =>
+    request<Vendor[]>(`/vendors${type ? `?type=${type}` : ""}`),
+  createVendor: (data: { name: string; type: VendorType; contactEmail?: string; location?: string }) =>
+    post<Vendor>("/vendors", data),
 
-export function searchTrains(from: string, to: string, date: string): Promise<SearchResult> {
-  const params = new URLSearchParams({ from, to, date });
-  return request(`/trains/search?${params.toString()}`);
-}
+  listOrders: () => request<RequirementOrder[]>("/orders"),
+  getOrder: (id: string) => request<RequirementOrder>(`/orders/${id}`),
+  createOrder: (data: {
+    customerName: string;
+    customerEmail: string;
+    productName: string;
+    quantity: number;
+    specifications?: string;
+    materials: { name: string; quantity: number; unit: string }[];
+  }) => post<RequirementOrder>("/orders", data),
 
-export function getTrain(trainId: string): Promise<Train> {
-  return request(`/trains/${trainId}`);
-}
+  // Approvals
+  listApprovals: (status?: string) =>
+    request<ApprovalWithOrder[]>(`/approvals${status ? `?status=${status}` : ""}`),
+  decideApproval: (
+    orderId: string,
+    approvalId: string,
+    data: { decision: "APPROVED" | "REJECTED"; decidedBy: string; comments?: string }
+  ) => post<RequirementOrder>(`/orders/${orderId}/approvals/${approvalId}/decide`, data),
 
-export function getSeatMap(trainId: string, classId: string, date: string): Promise<SeatMapResponse> {
-  const params = new URLSearchParams({ classId, date });
-  return request(`/trains/${trainId}/seats?${params.toString()}`);
-}
+  // Raw material procurement
+  placeRawMaterialOrder: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/place`, { actor }),
+  sourceRawMaterialVendors: (id: string, vendorIds: string[], actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/sourcing`, { vendorIds, actor }),
+  quoteRawMaterialRfq: (id: string, rfqId: string, quotedPrice: number, leadTimeDays: number) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/rfq/${rfqId}/quote`, {
+      quotedPrice,
+      leadTimeDays,
+    }),
+  submitAcceptRawMaterialRfq: (id: string, rfqId: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/rfq/${rfqId}/accept`, { requestedBy }),
+  submitPlaceRawMaterialOrder: (id: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/order/place`, { requestedBy }),
+  submitRawMaterialGoodsReceipt: (
+    id: string,
+    data: { receivedQty: number; condition: string; notes?: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/raw-material/goods-receipt`, data),
+  submitRawMaterialInvoice: (
+    id: string,
+    data: { invoiceNumber: string; amount: number; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/raw-material/invoice`, data),
+  payRawMaterialInvoice: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/raw-material/invoice/pay`, { actor }),
 
-export interface BlockSeatsPayload {
-  trainId: string;
-  date: string;
-  classId: string;
-  seatNumbers: string[];
-  passengers: Passenger[];
-  contactEmail: string;
-  contactPhone: string;
-}
-
-export function blockSeats(payload: BlockSeatsPayload): Promise<Booking> {
-  return request("/bookings/block", { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function getBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}`);
-}
-
-export interface PaymentPayload {
-  method: "CARD" | "UPI" | "NETBANKING";
-  cardNumber?: string;
-  cardName?: string;
-  expiry?: string;
-  cvv?: string;
-  upiId?: string;
-}
-
-export function payForBooking(bookingId: string, payload: PaymentPayload): Promise<Booking> {
-  return request(`/bookings/${bookingId}/payment`, { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function cancelBooking(bookingId: string): Promise<Booking> {
-  return request(`/bookings/${bookingId}/cancel`, { method: "POST" });
-}
-
-export function listBookingsByEmail(email: string): Promise<Booking[]> {
-  const params = new URLSearchParams({ email });
-  return request(`/bookings?${params.toString()}`);
-}
+  // Manufacturing, inventory & distribution
+  placeManufacturingOrder: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/place`, { actor }),
+  selectManufacturingMode: (
+    id: string,
+    data: { mode: "EXTERNAL" | "INHOUSE"; vendorIds?: string[]; unitName?: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/mode`, { ...data, actor: data.requestedBy }),
+  quoteManufacturingRfq: (id: string, rfqId: string, quotedPrice: number, leadTimeDays: number) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/rfq/${rfqId}/quote`, {
+      quotedPrice,
+      leadTimeDays,
+    }),
+  submitAcceptManufacturingRfq: (id: string, rfqId: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/rfq/${rfqId}/accept`, { requestedBy }),
+  submitPlaceManufacturingOrder: (id: string, requestedBy: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/order/place`, { requestedBy }),
+  completeManufacturingOrder: (id: string, actor: string) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/order/complete`, { actor }),
+  submitInventory: (
+    id: string,
+    data: { producedQty: number; warehouseLocation: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/inventory`, data),
+  submitDistribution: (id: string, data: { carrier: string; shipmentId?: string; requestedBy: string }) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/distribution`, data),
+  submitDelivery: (
+    id: string,
+    data: { deliveryAddress: string; recipient: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/delivery`, data),
+  submitManufacturingGoodsReceipt: (
+    id: string,
+    data: { receivedQty: number; confirmedBy: string; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/goods-receipt`, data),
+  submitManufacturingInvoice: (
+    id: string,
+    data: { invoiceNumber: string; amount: number; requestedBy: string }
+  ) => post<RequirementOrder>(`/orders/${id}/manufacturing/invoice`, data),
+  submitBilling: (id: string, data: { paymentStatus: string; requestedBy: string }) =>
+    post<RequirementOrder>(`/orders/${id}/manufacturing/billing`, data),
+  closeOrder: (id: string, actor: string) => post<RequirementOrder>(`/orders/${id}/close`, { actor }),
+};

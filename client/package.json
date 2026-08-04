@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-client",
+  "name": "supply-flow-client",
   "version": "1.0.0",
-  "description": "Frontend for the train schedule, booking and payment app",
+  "description": "Frontend for the supply process flow app (raw material procurement -> manufacturing -> distribution)",
   "type": "module",
   "scripts": {
     "dev": "vite",
