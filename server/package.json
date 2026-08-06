@@ -1,7 +1,7 @@
 {
-  "name": "train-schedule-server",
+  "name": "feasibility-checker-server",
   "version": "1.0.0",
-  "description": "Backend API for the train schedule, booking and payment app",
+  "description": "Backend API for the feasibility reality-checker app",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
